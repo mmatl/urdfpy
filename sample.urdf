@@ -1,0 +1,56 @@
+<?xml version="1.0" ?>
+
+<robot name="">
+    <material name="">
+        <color rgba=""/>
+        <texture filename=""/>
+    </material>
+    <link name="">
+        <inertial>
+            <mass value="4.0"/>
+            <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+            <inertia ixx="" ixy="" ixz="" iyy="" iyz="" izz=""/>
+        </inertial>
+        <visual name="">
+            <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+            <geometry>
+                <box size="0 0 0"/>
+                <cylinder radius="" length=""/>
+                <sphere radius=""/>
+                <mesh filename="" scale=""/>
+            </geometry>
+            <material name=""/>
+        </visual>
+        <collision name="">
+            <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+            <geometry>
+                <box size="0 0 0"/>
+                <cylinder radius="" length=""/>
+                <sphere radius=""/>
+                <mesh filename="" scale=""/>
+            </geometry>
+        </collision>
+    </link>
+    <joint name="" type="">
+        <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
+        <parent link="base_link"/>
+        <child link="shoulder_link"/>
+        <axis xyz="0 0 1"/>
+        <calibration rising="" falling=""/>
+        <dynamics damping="0.0" friction="0.0"/>
+        <limit effort="" lower="" upper="" velocity=""/>
+        <mimic multiplier="" offset=""/>
+        <safety_controller soft_lower_limit="" soft_upper_limit="" k_position="" k_velociy=""/>
+    </joint>
+    <transmission name="">
+        <type>asdf/asdf</type>
+        <joint name="">
+            <hardwareInterface>asdf</hardwareInterface>
+        </joint>
+        <actuator name="">
+            <mechanicalReduction>1</mechanicalReduction>
+            <hardwareInterface>asdf</hardwareInterface>
+        </actuator>
+    </transmission>
+</robot>
+
