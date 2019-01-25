@@ -1,6 +1,8 @@
-import xml.etree.ElementTree as ET
+import os
+from lxml import etree as ET
 
 import numpy as np
+import trimesh
 import six
 
 def _rpy_to_mat(r, p, y):
@@ -21,27 +23,27 @@ def _rpy_to_mat(r, p, y):
         [-sh,   cj*si,    cj*ci]
     ])
 
-def _mat_to_rpy(mat):
+def _mat_to_rpy(m):
     r = 0.0;
     p = 0.0;
     y = 0.0;
-    if np.abs(mat[2,0]) >= 1.0:
-        if mat[2,0] < 0:
-            delta = np.atan2(m[0,1], m[0,2])
+    if np.abs(m[2,0]) >= 1.0:
+        if m[2,0] < 0:
+            delta = np.arctan2(m[0,1], m[0,2])
             p = np.pi / 2.0
             r = delta
         else:
-            delta = np.atan2(-m[0,1], -m[0,2])
+            delta = np.arctan2(-m[0,1], -m[0,2])
             p = -np.pi / 2
             r = delta
     else:
-        p = -np.arcsin(mat[2,0])
-        r = np.atan2(mat[2,1] / np.cos(p), mat[2,2] / np.cos(p))
-        y = np.atan2(mat[1,0] / np.cos(p), mat[0,0] / np.cos(p))
+        p = -np.arcsin(m[2,0])
+        r = np.arctan2(m[2,1] / np.cos(p), m[2,2] / np.cos(p))
+        y = np.arctan2(m[1,0] / np.cos(p), m[0,0] / np.cos(p))
 
     return r, p, y
 
-def _unpack_origin(self, node):
+def _unpack_origin(node):
     origin = np.eye(4)
     origin_node = node.find('origin')
     if origin_node is not None:
@@ -52,7 +54,7 @@ def _unpack_origin(self, node):
             origin[:3,:3] = _rpy_to_mat(*rpy)
     return origin
 
-def _pack_origin(self, origin):
+def _pack_origin(origin):
     node = ET.Element('origin')
     r, p, y = _mat_to_rpy(origin[:3,:3])
     x, y, z = origin[:3,3]
@@ -85,7 +87,7 @@ class URDFType(object):
                 v = cls._parse_attrib(t, node.attrib[a])
             else:
                 v = None
-                if a in node.attribs:
+                if a in node.attrib:
                     v = cls._parse_attrib(t, node.attrib[a])
             kwargs[a] = v
         return kwargs
@@ -100,7 +102,7 @@ class URDFType(object):
                 if r or v is not None:
                     v = t._from_xml(v, path)
             else:
-                vs = node.findall(a)
+                vs = node.findall(t.TAG)
                 v = [t._from_xml(n, path) for n in vs]
             kwargs[a] = v
         return kwargs
@@ -130,25 +132,25 @@ class URDFType(object):
                 node.attrib[a] = self._unparse_attrib(t, v)
 
     def _unparse_simple_elements(self, node, path):
-        for a in cls.ELEMENTS:
-            t, r, m = cls.ELEMENTS[a]
+        for a in self.ELEMENTS:
+            t, r, m = self.ELEMENTS[a]
             v = getattr(self, a, None)
             if not m:
                 if r or v is not None:
-                    node.append(v._to_xml(path))
+                    node.append(v._to_xml(node, path))
             else:
                 vs = v
                 for v in vs:
-                    node.append(v._to_xml(path))
+                    node.append(v._to_xml(node, path))
 
-    def _unparse(self, path):
+    def _unparse(self, parent, path):
         node = ET.Element(self.TAG)
         self._unparse_simple_attribs(node)
         self._unparse_simple_elements(node, path)
         return node
 
-    def _to_xml(self, path):
-        return self._unparse(path)
+    def _to_xml(self, parent, path):
+        return self._unparse(parent, path)
 
 class JointDynamics(URDFType):
     ATTRIBS = {
@@ -205,12 +207,22 @@ class Mesh(URDFType):
     @classmethod
     def _from_xml(cls, node, path):
         kwargs = cls._parse(node, path)
-        kwargs['mesh'] = trimesh.load(os.path.join(path, filename))
+        mesh = trimesh.load(os.path.join(path, kwargs['filename']))
+        if isinstance(mesh, list):
+            m = mesh[0]
+            for n in mesh[1:]:
+                m = m + n
+            mesh = m
+        kwargs['mesh'] = mesh
         return Mesh(**kwargs)
 
-    def _to_xml(self, path):
-        self.mesh.export(os.path.join(path, self.filename))
-        return self._unparse(path)
+    def _to_xml(self, parent, path):
+        filepath = os.path.join(path, self.filename)
+        p, _ = os.path.split(filepath)
+        if not os.path.exists(p):
+            os.makedirs(p)
+        self.mesh.export(filepath)
+        return self._unparse(parent, path)
 
 class Geometry(URDFType):
     ELEMENTS = {
@@ -226,6 +238,71 @@ class Geometry(URDFType):
         self.cylinder = cylinder
         self.sphere = sphere
         self.mesh = mesh
+
+class Texture(URDFType):
+    ATTRIBS = {
+        'filename' : (str, True)
+    }
+    TAG = 'texture'
+
+    def __init__(self, filename, image):
+        self.filename = filename
+        self.image = image
+
+    @classmethod
+    def _from_xml(cls, node, path):
+        kwargs = cls._parse(node, path)
+        filepath = os.path.join(path, self.filename)
+        p, _ = os.path.split(filepath)
+        if not os.path.exists(p):
+            os.makedirs(p)
+        kwargs['image'] = ColorImage.open(filepath)
+        return Texture(**kwargs)
+
+    def _to_xml(self, parent, path):
+        filepath = os.path.join(path, self.filename)
+        p, _ = os.path.split(filepath)
+        if not os.path.exists(p):
+            os.makedirs(p)
+        self.image.save(filepath)
+        return self._unparse(parent, path)
+
+
+class LinkMaterial(URDFType):
+    ATTRIBS = {
+        'name' : (str, True)
+    }
+    ELEMENTS = {
+        'texture' : (Texture, False, False),
+    }
+    TAG = 'material'
+
+    def __init__(self, name, color, texture):
+        self.name = name
+        self.color = color
+        self.texture = texture
+
+    @classmethod
+    def _from_xml(cls, node, path):
+        kwargs = cls._parse(node, path)
+        color = node.find('color')
+        if color is not None:
+            color = np.fromstring(color.attrib['rgba'], sep=' ')
+        kwargs['color'] = color
+        return LinkMaterial(**kwargs)
+
+    def _to_xml(self, parent, path):
+        if parent.tag == 'robot':
+            node = ET.Element('material')
+            node.attrib['name'] = name
+            return node
+        else:
+            node = self._unparse(parent, path)
+            if self.color is not None:
+                color = ET.Element('color')
+                color.attrib['rgba'] = np.array2string(self.color)[1:-1]
+                node.append(color)
+            return node
 
 class Collision(URDFType):
     ATTRIBS = {
@@ -247,8 +324,8 @@ class Collision(URDFType):
         kwargs['origin'] = _unpack_origin(node)
         return Collision(**kwargs)
 
-    def _to_xml(self, path):
-        node = self._unparse(path)
+    def _to_xml(self, parent, path):
+        node = self._unparse(parent, path)
         node.append(_pack_origin(self.origin))
         return node
 
@@ -274,66 +351,13 @@ class Visual(URDFType):
         kwargs['origin'] = _unpack_origin(node)
         return Visual(**kwargs)
 
-    def _to_xml(self, path):
-        node = self._unparse(path)
+    def _to_xml(self, parent, path):
+        node = self._unparse(parent, path)
         node.append(_pack_origin(self.origin))
-        node.append(self.geometry._to_xml())
-        if self.material is not None:
-            node.append(self.material._to_xml())
-        return node
-
-class Texture(URDFType):
-    ATTRIBS = {
-        'filename' : (str, True)
-    }
-    TAG = 'texture'
-
-    def __init__(self, filename, image):
-        self.filename = filename
-        self.image = image
-
-    @classmethod
-    def _from_xml(cls, node, path):
-        kwargs = cls._parse(node, path)
-        kwargs['image'] = ColorImage.open(os.path.join(path, filename))
-        return Texture(**kwargs)
-
-    def _to_xml(self, path):
-        self.image.save(os.path.join(path, self.filename))
-        return self._unparse(path)
-
-class LinkMaterial(URDFType):
-    ATTRIBS = {
-        'name' : (str, True)
-    }
-    ELEMENTS = {
-        'texture' : (Texture, False, False),
-    }
-    TAG = 'material'
-
-    def __init__(self, name, color, texture):
-        self.name = name
-        self.color = color
-        self.texture = texture
-
-    @classmethod
-    def _from_xml(cls, node, path):
-        kwargs = cls._parse(node, path)
-        color = node.find('color')
-        if color is not None:
-            color = np.fromstring(color.attrib['rgba'], sep=' ')
-        kwargs['color'] = color
-        return LinkMaterial(**kwargs)
-
-    def _to_xml(self, path):
-        node = self._unparse(path)
-        if self.color is not None:
-            color = ET.Element('color')
-            color.attrib['rgba'] = np.array2string(self.color)[1:-1]
-            node.append(color)
         return node
 
 class Inertial(URDFType):
+    TAG = 'inertial'
 
     def __init__(self, mass, inertia, origin):
         self.mass = mass
@@ -343,7 +367,7 @@ class Inertial(URDFType):
     @classmethod
     def _from_xml(cls, node, path):
         origin = _unpack_origin(node)
-        mass = float(node.find('mass').text)
+        mass = float(node.find('mass').attrib['value'])
         n = node.find('inertia')
         xx = float(n.attrib['ixx'])
         xy = float(n.attrib['ixy'])
@@ -358,11 +382,11 @@ class Inertial(URDFType):
         ])
         return Inertial(mass=mass, inertia=inertia, origin=origin)
 
-    def _to_xml(self, path):
+    def _to_xml(self, parent, path):
         node = ET.Element('inertial')
         node.append(_pack_origin(self.origin))
         mass = ET.Element('mass')
-        mass.text = str(self.mass)
+        mass.attrib['value'] = str(self.mass)
         node.append(mass)
         inertia = ET.Element('inertia')
         inertia.attrib['ixx'] = str(self.inertia[0,0])
@@ -389,7 +413,7 @@ class JointCalibration(URDFType):
 class JointLimit(URDFType):
     ATTRIBS = {
         'lower' : (float, False),
-        'upper' : (float, False)
+        'upper' : (float, False),
         'effort' : (float, True),
         'velocity' : (float, True)
     }
@@ -404,7 +428,7 @@ class JointLimit(URDFType):
 class JointMimic(URDFType):
     ATTRIBS = {
         'joint' : (str, True),
-        'multiplier' : (float, False)
+        'multiplier' : (float, False),
         'offset' : (float, True),
     }
     TAG = 'mimic'
@@ -419,7 +443,7 @@ class SafetyController(URDFType):
         'soft_lower_limit' : (float, False),
         'soft_upper_limit' : (float, False),
         'k_position' : (float, False),
-        'k_velocity' : (float, True)
+        'k_velocity' : (float, True),
         'offset' : (float, True),
     }
     TAG = 'safety_controller'
@@ -466,18 +490,18 @@ class Joint(URDFType):
         kwargs = cls._parse(node, path)
         kwargs['parent'] = node.find('parent').attrib['link']
         kwargs['child'] = node.find('child').attrib['link']
-        axis = node.find['axis']
+        axis = node.find('axis')
         if axis is not None:
             axis = np.fromstring(axis.attrib['xyz'], sep=' ')
         else:
             if kwargs['type'] in set(['revolute', 'prismatic', 'planar']):
                 axis = np.array([1.0, 0.0, 0.0])
         kwargs['axis'] = axis
-        kwargs['origin'] = _pack_origin(node)
+        kwargs['origin'] = _unpack_origin(node)
         return Joint(**kwargs)
 
-    def _to_xml(self, path):
-        node = self._unparse(path)
+    def _to_xml(self, parent, path):
+        node = self._unparse(parent, path)
         parent = ET.Element('parent')
         parent.attrib['link'] = self.parent
         node.append(parent)
@@ -532,8 +556,8 @@ class Actuator(URDFType):
         kwargs['hardwareInterfaces'] = hi
         return Actuator(**kwargs)
 
-    def _to_xml(self, path):
-        node = self._unparse(path)
+    def _to_xml(self, parent, path):
+        node = self._unparse(parent, path)
         if self.mechanicalReduction is not None:
             mr = ET.Element('mechanicalReduction')
             mr.text = str(self.mechanicalReduction)
@@ -553,7 +577,7 @@ class TransmissionJoint(URDFType):
 
     def __init__(self, name, hardwareInterfaces):
         self.name = name
-        self.hardwareInterfaces = []
+        self.hardwareInterfaces = hardwareInterfaces
 
     @classmethod
     def _from_xml(cls, node, path):
@@ -564,8 +588,8 @@ class TransmissionJoint(URDFType):
         kwargs['hardwareInterfaces'] = hi
         return TransmissionJoint(**kwargs)
 
-    def _to_xml(self, path):
-        node = self._unparse(path)
+    def _to_xml(self, parent, path):
+        node = self._unparse(parent, path)
         if len(self.hardwareInterfaces) > 0:
             for hi in self.hardwareInterfaces:
                 h = ET.Element('hardwareInterface')
@@ -595,8 +619,8 @@ class Transmission(URDFType):
         kwargs['type'] = node.find('type').text
         return Transmission(**kwargs)
 
-    def _to_xml(self, path):
-        node = self._unparse(path)
+    def _to_xml(self, parent, path):
+        node = self._unparse(parent, path)
         ttype = ET.Element('type')
         ttype.text = self.type
         node.append(ttype)
@@ -614,40 +638,65 @@ class Robot(URDFType):
     }
     TAG = 'robot'
 
-    def __init__(self, name=None, joints=None, links=None,
-                 transmissions=None, materials=None):
+    def __init__(self, name, joints, links,
+                 transmissions, materials, other_xml):
         self.name = name
         self.joints = joints
         self.links = links
         self.transmissions = transmissions
         self.materials = materials
+        self.other_xml = other_xml
+
+    @classmethod
+    def _from_xml(cls, node, path):
+        kwargs = cls._parse(node, path)
+
+        extra_xml_node = ET.Element('extra')
+        for child in node:
+            if child.tag not in set(['joint', 'link', 'transmission', 'material']):
+                extra_xml_node.append(child)
+
+        data = ET.tostring(extra_xml_node)
+        kwargs['other_xml'] = data
+        return Robot(**kwargs)
+
+    def _to_xml(self, parent, path):
+        node = self._unparse(parent, path)
+        extra_tree = ET.fromstring(self.other_xml)
+        for child in extra_tree:
+            node.append(child)
+        return node
 
     @staticmethod
-    def _from_xml_file(file_obj):
+    def from_xml_file(file_obj):
         if isinstance(file_obj, six.string_types):
-            tree = ET.fromstring(file_obj)
-            path, _ = os.path.split(file_obj)
+            if os.path.isfile(file_obj):
+                parser = ET.XMLParser(remove_comments=True, remove_blank_text=True)
+                tree = ET.parse(file_obj, parser=parser)
+                path, _ = os.path.split(file_obj)
+            else:
+                tree = ET.fromstring(file_obj)
+                path = ''
         else:
-            tree = ET.parse(file_obj)
+            parser = ET.XMLParser(remove_comments=True, remove_blank_text=True)
+            tree = ET.parse(file_obj, parser=parser)
             path, _ = os.path.split(file_obj.name)
 
         node = tree.getroot()
         return Robot._from_xml(node, path)
 
-    @staticmethod
-    def _to_xml_file(self, file_obj):
+    def to_xml_file(self, file_obj):
         if isinstance(file_obj, six.string_types):
             path, _ = os.path.split(file_obj)
         else:
             path, _ = os.path.split(file_obj.name)
 
-        node = self._to_xml(path)
+        node = self._to_xml(None, path)
         tree = ET.ElementTree(node)
-        tree.write(file_obj)
+        tree.write(file_obj, pretty_print=True, xml_declaration=True, encoding='utf-8')
 
 if __name__ == '__main__':
     import sys
     x = sys.argv[1]
-    r = Robot._from_xml_file(x)
-    import pdb
-    pdb.set_trace()
+    rob = Robot.from_xml_file(x)
+    rob.to_xml_file('../data/tmp/rob.urdf')
