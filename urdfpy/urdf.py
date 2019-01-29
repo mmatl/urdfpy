@@ -124,17 +124,9 @@ class URDFType(object):
     def _to_xml(self, parent, path):
         return self._unparse(parent, path)
 
-class JointDynamics(URDFType):
-    ATTRIBS = {
-        'damping' : (float, False),
-        'friction' : (float, False),
-    }
-    TAG = 'dynamics'
-
-    def __init__(self, damping, friction):
-        self.damping = damping
-        self.friction = friction
-
+################################################################################
+# Link types
+################################################################################
 class Box(URDFType):
     ATTRIBS = {
         'size' : (np.ndarray, True)
@@ -235,6 +227,21 @@ class LinkGeometry(URDFType):
         self.sphere = sphere
         self.mesh = mesh
 
+    @property
+    def geometry(self):
+        if self.box is not None:
+            return self.box
+        if self.cylinder is not None:
+            return self.cylinder
+        if self.sphere is not None:
+            return self.sphere
+        if self.mesh is not None:
+            return self.mesh
+
+    @property
+    def trimesh(self):
+        return self.geometry.mesh
+
 class LinkTexture(URDFType):
     ATTRIBS = {
         'filename' : (str, True)
@@ -262,7 +269,6 @@ class LinkTexture(URDFType):
             os.makedirs(p)
         self.image.save(filepath)
         return self._unparse(parent, path)
-
 
 class LinkMaterial(URDFType):
     ATTRIBS = {
@@ -394,6 +400,9 @@ class Inertial(URDFType):
         node.append(inertia)
         return node
 
+################################################################################
+# Joint types
+################################################################################
 
 class JointCalibration(URDFType):
     ATTRIBS = {
@@ -405,6 +414,17 @@ class JointCalibration(URDFType):
     def __init__(self, rising, falling):
         self.rising = rising
         self.falling = falling
+
+class JointDynamics(URDFType):
+    ATTRIBS = {
+        'damping' : (float, False),
+        'friction' : (float, False),
+    }
+    TAG = 'dynamics'
+
+    def __init__(self, damping, friction):
+        self.damping = damping
+        self.friction = friction
 
 class JointLimit(URDFType):
     ATTRIBS = {
@@ -449,6 +469,108 @@ class SafetyController(URDFType):
         self.k_position = k_position
         self.soft_lower_limit = soft_lower_limit
         self.soft_upper_limit = soft_upper_limit
+
+################################################################################
+# Transmission types
+################################################################################
+
+class Actuator(URDFType):
+    ATTRIBS = {
+        'name' : (str, True),
+    }
+    TAG = 'actuator'
+
+    def __init__(self, name, mechanicalReduction, hardwareInterfaces):
+        self.name = name
+        self.mechanicalReduction = mechanicalReduction
+        self.hardwareInterfaces = hardwareInterfaces
+
+    @classmethod
+    def _from_xml(cls, node, path):
+        kwargs = cls._parse(node, path)
+        mr = node.find('mechanicalReduction')
+        if mr is not None:
+            mr = float(mr.text)
+        kwargs['mechanicalReduction'] = mr
+        hi = node.findall('hardwareInterface')
+        if len(hi) > 0:
+            hi = [h.text for h in hi]
+        kwargs['hardwareInterfaces'] = hi
+        return Actuator(**kwargs)
+
+    def _to_xml(self, parent, path):
+        node = self._unparse(parent, path)
+        if self.mechanicalReduction is not None:
+            mr = ET.Element('mechanicalReduction')
+            mr.text = str(self.mechanicalReduction)
+            node.append(mr)
+        if len(self.hardwareInterfaces) > 0:
+            for hi in self.hardwareInterfaces:
+                h = ET.Element('hardwareInterface')
+                h.text = hi
+                node.append(h)
+        return node
+
+class TransmissionJoint(URDFType):
+    ATTRIBS = {
+        'name' : (str, True),
+    }
+    TAG = 'joint'
+
+    def __init__(self, name, hardwareInterfaces):
+        self.name = name
+        self.hardwareInterfaces = hardwareInterfaces
+
+    @classmethod
+    def _from_xml(cls, node, path):
+        kwargs = cls._parse(node, path)
+        hi = node.findall('hardwareInterface')
+        if len(hi) > 0:
+            hi = [h.text for h in hi]
+        kwargs['hardwareInterfaces'] = hi
+        return TransmissionJoint(**kwargs)
+
+    def _to_xml(self, parent, path):
+        node = self._unparse(parent, path)
+        if len(self.hardwareInterfaces) > 0:
+            for hi in self.hardwareInterfaces:
+                h = ET.Element('hardwareInterface')
+                h.text = hi
+                node.append(h)
+        return node
+
+################################################################################
+# Top-level types
+################################################################################
+
+class Transmission(URDFType):
+    ATTRIBS = {
+        'name' : (str, True),
+    }
+    ELEMENTS = {
+        'joints' : (TransmissionJoint, True, True),
+        'actuators' : (Actuator, True, True),
+    }
+    TAG = 'transmission'
+
+    def __init__(self, name, type, joints, actuators):
+        self.name = name
+        self.type = type
+        self.joints = joints
+        self.actuators = actuators
+
+    @classmethod
+    def _from_xml(cls, node, path):
+        kwargs = cls._parse(node, path)
+        kwargs['type'] = node.find('type').text
+        return Transmission(**kwargs)
+
+    def _to_xml(self, parent, path):
+        node = self._unparse(parent, path)
+        ttype = ET.Element('type')
+        ttype.text = self.type
+        node.append(ttype)
+        return node
 
 class Joint(URDFType):
     TYPES = ['unknown', 'revolute', 'continuous', 'prismatic',
@@ -547,117 +669,36 @@ class Link(URDFType):
 
     @property
     def visual_meshes(self):
+        """list of :obj:`trimesh.Trimesh`: The visual meshes that make up
+        this link. All meshes are specified in the link frame.
+        """
         if self._visual_meshes is None:
             meshes = []
             for v in self.visuals:
-                meshes.append(v.geometry.mesh)
+                pose = v.origin
+                m = v.geometry.trimesh.copy()
+                m.apply_transform(pose)
+                meshes.append(m)
             self._visual_meshes = meshes
         return self._visual_meshes
 
     @property
     def collision_mesh(self):
+        """:obj:`trimesh.Trimesh`: The collision mesh that makes up this link.
+        The mesh is specified in the link frame.
+        """
         if len(self.collisions) == 0:
             return None
         if self._collision_mesh is None:
-            m = self.collisions[0].geometry.mesh
+            m = self.collisions[0].geometry.trimesh.copy()
+            pose = self.collisions[0].origin
+            m.apply_transform(pose)
             for c in self.collisions[1:]:
-                m += c
+                nm = c.geometry.trimesh.copy()
+                nm.apply_transform(c.origin)
+                m += nm
             self._collision_mesh = m
         return self._collision_mesh
-
-class Actuator(URDFType):
-    ATTRIBS = {
-        'name' : (str, True),
-    }
-    TAG = 'actuator'
-
-    def __init__(self, name, mechanicalReduction, hardwareInterfaces):
-        self.name = name
-        self.mechanicalReduction = mechanicalReduction
-        self.hardwareInterfaces = hardwareInterfaces
-
-    @classmethod
-    def _from_xml(cls, node, path):
-        kwargs = cls._parse(node, path)
-        mr = node.find('mechanicalReduction')
-        if mr is not None:
-            mr = float(mr.text)
-        kwargs['mechanicalReduction'] = mr
-        hi = node.findall('hardwareInterface')
-        if len(hi) > 0:
-            hi = [h.text for h in hi]
-        kwargs['hardwareInterfaces'] = hi
-        return Actuator(**kwargs)
-
-    def _to_xml(self, parent, path):
-        node = self._unparse(parent, path)
-        if self.mechanicalReduction is not None:
-            mr = ET.Element('mechanicalReduction')
-            mr.text = str(self.mechanicalReduction)
-            node.append(mr)
-        if len(self.hardwareInterfaces) > 0:
-            for hi in self.hardwareInterfaces:
-                h = ET.Element('hardwareInterface')
-                h.text = hi
-                node.append(h)
-        return node
-
-class TransmissionJoint(URDFType):
-    ATTRIBS = {
-        'name' : (str, True),
-    }
-    TAG = 'joint'
-
-    def __init__(self, name, hardwareInterfaces):
-        self.name = name
-        self.hardwareInterfaces = hardwareInterfaces
-
-    @classmethod
-    def _from_xml(cls, node, path):
-        kwargs = cls._parse(node, path)
-        hi = node.findall('hardwareInterface')
-        if len(hi) > 0:
-            hi = [h.text for h in hi]
-        kwargs['hardwareInterfaces'] = hi
-        return TransmissionJoint(**kwargs)
-
-    def _to_xml(self, parent, path):
-        node = self._unparse(parent, path)
-        if len(self.hardwareInterfaces) > 0:
-            for hi in self.hardwareInterfaces:
-                h = ET.Element('hardwareInterface')
-                h.text = hi
-                node.append(h)
-        return node
-
-class Transmission(URDFType):
-    ATTRIBS = {
-        'name' : (str, True),
-    }
-    ELEMENTS = {
-        'joints' : (TransmissionJoint, True, True),
-        'actuators' : (Actuator, True, True),
-    }
-    TAG = 'transmission'
-
-    def __init__(self, name, type, joints, actuators):
-        self.name = name
-        self.type = type
-        self.joints = joints
-        self.actuators = actuators
-
-    @classmethod
-    def _from_xml(cls, node, path):
-        kwargs = cls._parse(node, path)
-        kwargs['type'] = node.find('type').text
-        return Transmission(**kwargs)
-
-    def _to_xml(self, parent, path):
-        node = self._unparse(parent, path)
-        ttype = ET.Element('type')
-        ttype.text = self.type
-        node.append(ttype)
-        return node
 
 class URDF(URDFType):
     ATTRIBS = {

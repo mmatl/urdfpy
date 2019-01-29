@@ -1,6 +1,6 @@
 import numpy as np
 
-from urdfpy.urdf import URDF
+from urdfpy import URDF
 
 if __name__ == '__main__':
     rob = URDF.from_xml_file('../data/ur5/ur5.urdf')
@@ -18,9 +18,8 @@ if __name__ == '__main__':
     }
     link_to_pose = rob.forward_kinematics(joint_config)
     for l in link_to_pose:
-        if len(l.visuals) > 0:
-            m = l.visuals[0].geometry.mesh.mesh
-            p = link_to_pose[l].dot(l.visuals[0].origin)
+        p = link_to_pose[l]
+        for m in l.visual_meshes:
             vis3d.mesh(m, pose=p)
     vis3d.show()
 
