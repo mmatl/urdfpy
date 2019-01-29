@@ -143,6 +143,13 @@ class Box(URDFType):
 
     def __init__(self, size):
         self.size = size
+        self._mesh = None
+
+    @property
+    def mesh(self):
+        if self._mesh is None:
+            self._mesh = trimesh.creation.box(extents=self.size)
+        return self._mesh
 
 class Cylinder(URDFType):
     ATTRIBS = {
@@ -154,6 +161,13 @@ class Cylinder(URDFType):
     def __init__(self, radius, length):
         self.radius = radius
         self.length = length
+        self._mesh = None
+
+    @property
+    def mesh(self):
+        if self._mesh is None:
+            self._mesh = trimesh.creation.cylinder(radius=self.radius, height=self.height)
+        return self._mesh
 
 class Sphere(URDFType):
     ATTRIBS = {
@@ -163,6 +177,12 @@ class Sphere(URDFType):
 
     def __init__(self, radius):
         self.radius = radius
+
+    @property
+    def mesh(self):
+        if self._mesh is None:
+            self._mesh = trimesh.creation.icosphere(radius=self.radius)
+        return self._mesh
 
 class Mesh(URDFType):
     ATTRIBS = {
@@ -522,6 +542,29 @@ class Link(URDFType):
         self.inertial = inertial
         self.collisions = collisions
 
+        self._visual_meshes = None
+        self._collision_mesh = None
+
+    @property
+    def visual_meshes(self):
+        if self._visual_meshes is None:
+            meshes = []
+            for v in self.visuals:
+                meshes.append(v.geometry.mesh)
+            self._visual_meshes = meshes
+        return self._visual_meshes
+
+    @property
+    def collision_mesh(self):
+        if len(self.collisions) == 0:
+            return None
+        if self._collision_mesh is None:
+            m = self.collisions[0].geometry.mesh
+            for c in self.collisions[1:]:
+                m += c
+            self._collision_mesh = m
+        return self._collision_mesh
+
 class Actuator(URDFType):
     ATTRIBS = {
         'name' : (str, True),
@@ -718,8 +761,6 @@ class URDF(URDFType):
                     break
 
             link_to_pose[link] = pose
-
-        #link_name_to_pose = { l.name : link_to_pose[l] for l in link_to_pose }
 
         return link_to_pose
 
