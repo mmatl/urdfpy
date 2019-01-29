@@ -1,319 +1,458 @@
-import .core as xmlr
+import os
 
-# Add a 'namespace' for names to avoid a conflict between URDF and SDF?
-# A type registry? How to scope that? Just make a 'global' type pointer?
-# Or just qualify names? urdf.geometric, sdf.geometric
+from lxml import etree as ET
+import networkx as nx
+import numpy as np
+import trimesh
+import six
 
-xmlr.start_namespace('urdf')
+from .utils import rpy_to_mat, mat_to_rpy
 
-xmlr.add_type('element_link', xmlr.SimpleElementType('link', str))
-xmlr.add_type('element_xyz', xmlr.SimpleElementType('xyz', 'vector3'))
+def parse_origin(node):
+    """Find the 'origin' subelement of a node
+    and turn it into a 4x4 homogenous matrix.
+    """
+    origin = np.eye(4)
+    origin_node = node.find('origin')
+    if origin_node is not None:
+        if 'xyz' in origin_node.attrib:
+            origin[:3,3] = np.fromstring(origin_node.attrib['xyz'], sep=' ')
+        if 'rpy' in origin_node.attrib:
+            rpy = np.fromstring(origin_node.attrib['rpy'], sep=' ')
+            origin[:3,:3] = rpy_to_mat(*rpy)
+    return origin
 
-verbose = True
+def unparse_origin(origin):
+    """Turn a 4x4 homogenous matrix into an 'origin' XML node.
+    """
+    node = ET.Element('origin')
+    r, p, yaw = mat_to_rpy(origin[:3,:3])
+    x, y, z = origin[:3,3]
+    node.attrib['xyz'] = '{} {} {}'.format(x, y, z)
+    node.attrib['rpy'] = '{} {} {}'.format(r, p, yaw)
+    return node
 
-class Pose(xmlr.Object):
-    def __init__(self, xyz=None, rpy=None):
-        self.xyz = xyz
-        self.rpy = rpy
+class URDFType(object):
+    """Abstract base class for all URDF types.
+    """
+    ATTRIBS = {} # Map from attrib name to (type, required)
+    ELEMENTS = {} # Map from element name to (type, required, multiple)
+    TAG = ''
 
-    def check_valid(self):
-        assert (self.xyz is None or len(self.xyz) == 3) and \
-            (self.rpy is None or len(self.rpy) == 3)
+    def __init__(self):
+        pass
 
-    # Aliases for backwards compatibility
-    @property
-    def rotation(self): return self.rpy
+    @classmethod
+    def _parse_attrib(cls, val_type, val):
+        if val_type == np.ndarray:
+            val = np.fromstring(val, sep=' ')
+        else:
+            val = val_type(val)
+        return val
 
-    @rotation.setter
-    def rotation(self, value): self.rpy = value
+    @classmethod
+    def _parse_simple_attribs(cls, node):
+        kwargs = {}
+        for a in cls.ATTRIBS:
+            t, r = cls.ATTRIBS[a]
+            if r:
+                v = cls._parse_attrib(t, node.attrib[a])
+            else:
+                v = None
+                if a in node.attrib:
+                    v = cls._parse_attrib(t, node.attrib[a])
+            kwargs[a] = v
+        return kwargs
 
-    @property
-    def position(self): return self.xyz
+    @classmethod
+    def _parse_simple_elements(cls, node, path):
+        kwargs = {}
+        for a in cls.ELEMENTS:
+            t, r, m = cls.ELEMENTS[a]
+            if not m:
+                v = node.find(t.TAG)
+                if r or v is not None:
+                    v = t._from_xml(v, path)
+            else:
+                vs = node.findall(t.TAG)
+                v = [t._from_xml(n, path) for n in vs]
+            kwargs[a] = v
+        return kwargs
 
-    @position.setter
-    def position(self, value): self.xyz = value
+    @classmethod
+    def _parse(cls, node, path):
+        kwargs = cls._parse_simple_attribs(node)
+        kwargs.update(cls._parse_simple_elements(node, path))
+        return kwargs
 
+    @classmethod
+    def _from_xml(cls, node, path):
+        return cls(**cls._parse(node, path))
 
-xmlr.reflect(Pose, params=[
-    xmlr.Attribute('xyz', 'vector3', False, default=[0, 0, 0]),
-    xmlr.Attribute('rpy', 'vector3', False, default=[0, 0, 0])
-])
+    def _unparse_attrib(self, val_type, val):
+        if val_type == np.ndarray:
+            val = np.array2string(val)[1:-1]
+        else:
+            val = str(val)
+        return val
 
+    def _unparse_simple_attribs(self, node):
+        for a in self.ATTRIBS:
+            t, r = self.ATTRIBS[a]
+            v = getattr(self, a, None)
+            if r or v is not None:
+                node.attrib[a] = self._unparse_attrib(t, v)
 
-# Common stuff
-name_attribute = xmlr.Attribute('name', str)
-origin_element = xmlr.Element('origin', Pose, False)
+    def _unparse_simple_elements(self, node, path):
+        for a in self.ELEMENTS:
+            t, r, m = self.ELEMENTS[a]
+            v = getattr(self, a, None)
+            if not m:
+                if r or v is not None:
+                    node.append(v._to_xml(node, path))
+            else:
+                vs = v
+                for v in vs:
+                    node.append(v._to_xml(node, path))
 
+    def _unparse(self, parent, path):
+        node = ET.Element(self.TAG)
+        self._unparse_simple_attribs(node)
+        self._unparse_simple_elements(node, path)
+        return node
 
-class Color(xmlr.Object):
-    def __init__(self, *args):
-        # What about named colors?
-        count = len(args)
-        if count == 4 or count == 3:
-            self.rgba = args
-        elif count == 1:
-            self.rgba = args[0]
-        elif count == 0:
-            self.rgba = None
-        if self.rgba is not None:
-            if len(self.rgba) == 3:
-                self.rgba += [1.]
-            if len(self.rgba) != 4:
-                raise Exception('Invalid color argument count')
+    def _to_xml(self, parent, path):
+        return self._unparse(parent, path)
 
+class JointDynamics(URDFType):
+    ATTRIBS = {
+        'damping' : (float, False),
+        'friction' : (float, False),
+    }
+    TAG = 'dynamics'
 
-xmlr.reflect(Color, params=[
-    xmlr.Attribute('rgba', 'vector4')
-])
-
-
-class JointDynamics(xmlr.Object):
-    def __init__(self, damping=None, friction=None):
+    def __init__(self, damping, friction):
         self.damping = damping
         self.friction = friction
 
+class Box(URDFType):
+    ATTRIBS = {
+        'size' : (np.ndarray, True)
+    }
+    TAG = 'box'
 
-xmlr.reflect(JointDynamics, params=[
-    xmlr.Attribute('damping', float, False),
-    xmlr.Attribute('friction', float, False)
-])
-
-
-class Box(xmlr.Object):
-    def __init__(self, size=None):
+    def __init__(self, size):
         self.size = size
 
+class Cylinder(URDFType):
+    ATTRIBS = {
+        'radius' : (float, True),
+        'length' : (float, True),
+    }
+    TAG = 'cylinder'
 
-xmlr.reflect(Box, params=[
-    xmlr.Attribute('size', 'vector3')
-])
-
-
-class Cylinder(xmlr.Object):
-    def __init__(self, radius=0.0, length=0.0):
+    def __init__(self, radius, length):
         self.radius = radius
         self.length = length
 
+class Sphere(URDFType):
+    ATTRIBS = {
+        'radius' : (float, True),
+    }
+    TAG = 'sphere'
 
-xmlr.reflect(Cylinder, params=[
-    xmlr.Attribute('radius', float),
-    xmlr.Attribute('length', float)
-])
-
-
-class Sphere(xmlr.Object):
-    def __init__(self, radius=0.0):
+    def __init__(self, radius):
         self.radius = radius
 
+class Mesh(URDFType):
+    ATTRIBS = {
+        'filename' : (str, True),
+        'scale' : (float, False)
+    }
+    TAG = 'mesh'
 
-xmlr.reflect(Sphere, params=[
-    xmlr.Attribute('radius', float)
-])
-
-
-class Mesh(xmlr.Object):
-    def __init__(self, filename=None, scale=None):
+    def __init__(self, filename, scale, mesh):
         self.filename = filename
         self.scale = scale
+        self.mesh = mesh
 
+    @classmethod
+    def _from_xml(cls, node, path):
+        kwargs = cls._parse(node, path)
+        # Process collision geometry, but not visual geometry
+        process = True
+        if node.getparent().getparent().tag == Visual.TAG:
+            process = False
+        mesh = trimesh.load_mesh(os.path.join(path, kwargs['filename']), process=process)
+        if isinstance(mesh, list):
+            m = mesh[0]
+            for n in mesh[1:]:
+                m = m + n
+            mesh = m
+        kwargs['mesh'] = mesh
+        return Mesh(**kwargs)
 
-xmlr.reflect(Mesh, params=[
-    xmlr.Attribute('filename', str),
-    xmlr.Attribute('scale', 'vector3', required=False)
-])
+    def _to_xml(self, parent, path):
+        filepath = os.path.join(path, self.filename)
+        p, _ = os.path.split(filepath)
+        if not os.path.exists(p):
+            os.makedirs(p)
+        self.mesh.export(filepath)
+        return self._unparse(parent, path)
 
+class LinkGeometry(URDFType):
+    ELEMENTS = {
+        'box' : (Box, False, False),
+        'cylinder' : (Cylinder, False, False),
+        'sphere' : (Sphere, False, False),
+        'mesh' : (Mesh, False, False),
+    }
+    TAG = 'geometry'
 
-class GeometricType(xmlr.ValueType):
-    def __init__(self):
-        self.factory = xmlr.FactoryType('geometric', {
-            'box': Box,
-            'cylinder': Cylinder,
-            'sphere': Sphere,
-            'mesh': Mesh
-        })
+    def __init__(self, box, cylinder, sphere, mesh):
+        self.box = box
+        self.cylinder = cylinder
+        self.sphere = sphere
+        self.mesh = mesh
 
-    def from_xml(self, node):
-        children = xml_children(node)
-        assert len(children) == 1, 'One element only for geometric'
-        return self.factory.from_xml(children[0])
+class LinkTexture(URDFType):
+    ATTRIBS = {
+        'filename' : (str, True)
+    }
+    TAG = 'texture'
 
-    def write_xml(self, node, obj):
-        name = self.factory.get_name(obj)
-        child = node_add(node, name)
-        obj.write_xml(child)
-
-
-xmlr.add_type('geometric', GeometricType())
-
-
-class Collision(xmlr.Object):
-    def __init__(self, geometry=None, origin=None):
-        self.geometry = geometry
-        self.origin = origin
-
-
-xmlr.reflect(Collision, params=[
-    origin_element,
-    xmlr.Element('geometry', 'geometric')
-])
-
-
-class Texture(xmlr.Object):
-    def __init__(self, filename=None):
+    def __init__(self, filename, image):
         self.filename = filename
+        self.image = image
+
+    @classmethod
+    def _from_xml(cls, node, path):
+        kwargs = cls._parse(node, path)
+        filepath = os.path.join(path, self.filename)
+        p, _ = os.path.split(filepath)
+        if not os.path.exists(p):
+            os.makedirs(p)
+        kwargs['image'] = ColorImage.open(filepath)
+        return LinkTexture(**kwargs)
+
+    def _to_xml(self, parent, path):
+        filepath = os.path.join(path, self.filename)
+        p, _ = os.path.split(filepath)
+        if not os.path.exists(p):
+            os.makedirs(p)
+        self.image.save(filepath)
+        return self._unparse(parent, path)
 
 
-xmlr.reflect(Texture, params=[
-    xmlr.Attribute('filename', str)
-])
+class LinkMaterial(URDFType):
+    ATTRIBS = {
+        'name' : (str, True)
+    }
+    ELEMENTS = {
+        'texture' : (LinkTexture, False, False),
+    }
+    TAG = 'material'
 
-
-class Material(xmlr.Object):
-    def __init__(self, name=None, color=None, texture=None):
+    def __init__(self, name, color, texture):
         self.name = name
         self.color = color
         self.texture = texture
 
-    def check_valid(self):
-        if self.color is None and self.texture is None:
-            xmlr.on_error("Material has neither a color nor texture.")
+    @classmethod
+    def _from_xml(cls, node, path):
+        kwargs = cls._parse(node, path)
+        color = node.find('color')
+        if color is not None:
+            color = np.fromstring(color.attrib['rgba'], sep=' ')
+        kwargs['color'] = color
+        return LinkMaterial(**kwargs)
 
+    def _to_xml(self, parent, path):
+        if parent.tag == 'robot':
+            node = ET.Element('material')
+            node.attrib['name'] = name
+            return node
+        else:
+            node = self._unparse(parent, path)
+            if self.color is not None:
+                color = ET.Element('color')
+                color.attrib['rgba'] = np.array2string(self.color)[1:-1]
+                node.append(color)
+            return node
 
-xmlr.reflect(Material, params=[
-    name_attribute,
-    xmlr.Element('color', Color, False),
-    xmlr.Element('texture', Texture, False)
-])
+class Collision(URDFType):
+    ATTRIBS = {
+        'name' : (str, False)
+    }
+    ELEMENTS = {
+        'geometry' : (LinkGeometry, True, False),
+    }
+    TAG = 'collision'
 
-
-class LinkMaterial(Material):
-    def check_valid(self):
-        pass
-
-
-class Visual(xmlr.Object):
-    def __init__(self, geometry=None, material=None, origin=None):
+    def __init__(self, name, origin, geometry):
+        self.name = name
         self.geometry = geometry
-        self.material = material
         self.origin = origin
 
+    @classmethod
+    def _from_xml(cls, node, path):
+        kwargs = cls._parse(node, path)
+        kwargs['origin'] = parse_origin(node)
+        return Collision(**kwargs)
 
-xmlr.reflect(Visual, params=[
-    origin_element,
-    xmlr.Element('geometry', 'geometric'),
-    xmlr.Element('material', LinkMaterial, False)
-])
+    def _to_xml(self, parent, path):
+        node = self._unparse(parent, path)
+        node.append(unparse_origin(self.origin))
+        return node
 
+class Visual(URDFType):
+    ATTRIBS = {
+        'name' : (str, False)
+    }
+    ELEMENTS = {
+        'geometry' : (LinkGeometry, True, False),
+        'material' : (LinkMaterial, False, False),
+    }
+    TAG = 'visual'
 
-class Inertia(xmlr.Object):
-    KEYS = ['ixx', 'ixy', 'ixz', 'iyy', 'iyz', 'izz']
+    def __init__(self, name, origin, geometry, material):
+        self.name = name
+        self.geometry = geometry
+        self.origin = origin
+        self.material = material
 
-    def __init__(self, ixx=0.0, ixy=0.0, ixz=0.0, iyy=0.0, iyz=0.0, izz=0.0):
-        self.ixx = ixx
-        self.ixy = ixy
-        self.ixz = ixz
-        self.iyy = iyy
-        self.iyz = iyz
-        self.izz = izz
+    @classmethod
+    def _from_xml(cls, node, path):
+        kwargs = cls._parse(node, path)
+        kwargs['origin'] = parse_origin(node)
+        return Visual(**kwargs)
 
-    def to_matrix(self):
-        return [
-            [self.ixx, self.ixy, self.ixz],
-            [self.ixy, self.iyy, self.iyz],
-            [self.ixz, self.iyz, self.izz]]
+    def _to_xml(self, parent, path):
+        node = self._unparse(parent, path)
+        node.append(unparse_origin(self.origin))
+        return node
 
+class Inertial(URDFType):
+    TAG = 'inertial'
 
-xmlr.reflect(Inertia,
-             params=[xmlr.Attribute(key, float) for key in Inertia.KEYS])
-
-
-class Inertial(xmlr.Object):
-    def __init__(self, mass=0.0, inertia=None, origin=None):
+    def __init__(self, mass, inertia, origin):
         self.mass = mass
         self.inertia = inertia
         self.origin = origin
 
+    @classmethod
+    def _from_xml(cls, node, path):
+        origin = parse_origin(node)
+        mass = float(node.find('mass').attrib['value'])
+        n = node.find('inertia')
+        xx = float(n.attrib['ixx'])
+        xy = float(n.attrib['ixy'])
+        xz = float(n.attrib['ixz'])
+        yy = float(n.attrib['iyy'])
+        yz = float(n.attrib['iyz'])
+        zz = float(n.attrib['izz'])
+        inertia = np.array([
+            [xx, xy, xz],
+            [xy, yy, yz],
+            [xz, yz, zz]
+        ])
+        return Inertial(mass=mass, inertia=inertia, origin=origin)
 
-xmlr.reflect(Inertial, params=[
-    origin_element,
-    xmlr.Element('mass', 'element_value'),
-    xmlr.Element('inertia', Inertia, False)
-])
+    def _to_xml(self, parent, path):
+        node = ET.Element('inertial')
+        node.append(unparse_origin(self.origin))
+        mass = ET.Element('mass')
+        mass.attrib['value'] = str(self.mass)
+        node.append(mass)
+        inertia = ET.Element('inertia')
+        inertia.attrib['ixx'] = str(self.inertia[0,0])
+        inertia.attrib['ixy'] = str(self.inertia[0,1])
+        inertia.attrib['ixz'] = str(self.inertia[0,2])
+        inertia.attrib['iyy'] = str(self.inertia[1,1])
+        inertia.attrib['iyz'] = str(self.inertia[1,2])
+        inertia.attrib['izz'] = str(self.inertia[2,2])
+        node.append(inertia)
+        return node
 
 
-# FIXME: we are missing the reference position here.
-class JointCalibration(xmlr.Object):
-    def __init__(self, rising=None, falling=None):
+class JointCalibration(URDFType):
+    ATTRIBS = {
+        'rising' : (float, False),
+        'falling' : (float, False)
+    }
+    TAG = 'calibration'
+
+    def __init__(self, rising, falling):
         self.rising = rising
         self.falling = falling
 
+class JointLimit(URDFType):
+    ATTRIBS = {
+        'lower' : (float, False),
+        'upper' : (float, False),
+        'effort' : (float, True),
+        'velocity' : (float, True)
+    }
+    TAG = 'limit'
 
-xmlr.reflect(JointCalibration, params=[
-    xmlr.Attribute('rising', float, False, 0),
-    xmlr.Attribute('falling', float, False, 0)
-])
-
-
-class JointLimit(xmlr.Object):
-    def __init__(self, effort=None, velocity=None, lower=None, upper=None):
+    def __init__(self, effort, velocity, lower, upper):
         self.effort = effort
         self.velocity = velocity
         self.lower = lower
         self.upper = upper
 
+class JointMimic(URDFType):
+    ATTRIBS = {
+        'joint' : (str, True),
+        'multiplier' : (float, False),
+        'offset' : (float, True),
+    }
+    TAG = 'mimic'
 
-xmlr.reflect(JointLimit, params=[
-    xmlr.Attribute('effort', float),
-    xmlr.Attribute('lower', float, False, 0),
-    xmlr.Attribute('upper', float, False, 0),
-    xmlr.Attribute('velocity', float)
-])
-
-# FIXME: we are missing __str__ here.
-
-
-class JointMimic(xmlr.Object):
-    def __init__(self, joint_name=None, multiplier=None, offset=None):
+    def __init__(self, joint, multiplier, offset):
         self.joint = joint_name
         self.multiplier = multiplier
         self.offset = offset
 
+class SafetyController(URDFType):
+    ATTRIBS = {
+        'soft_lower_limit' : (float, False),
+        'soft_upper_limit' : (float, False),
+        'k_position' : (float, False),
+        'k_velocity' : (float, True),
+        'offset' : (float, True),
+    }
+    TAG = 'safety_controller'
 
-xmlr.reflect(JointMimic, params=[
-    xmlr.Attribute('joint', str),
-    xmlr.Attribute('multiplier', float, False),
-    xmlr.Attribute('offset', float, False)
-])
+    def __init__(self, soft_lower_limit, soft_upper_limit, k_position, k_velocity):
+        self.k_velocity = k_velocity
+        self.k_position = k_position
+        self.soft_lower_limit = soft_lower_limit
+        self.soft_upper_limit = soft_upper_limit
 
-
-class SafetyController(xmlr.Object):
-    def __init__(self, velocity=None, position=None, lower=None, upper=None):
-        self.k_velocity = velocity
-        self.k_position = position
-        self.soft_lower_limit = lower
-        self.soft_upper_limit = upper
-
-
-xmlr.reflect(SafetyController, params=[
-    xmlr.Attribute('k_velocity', float),
-    xmlr.Attribute('k_position', float, False, 0),
-    xmlr.Attribute('soft_lower_limit', float, False, 0),
-    xmlr.Attribute('soft_upper_limit', float, False, 0)
-])
-
-
-class Joint(xmlr.Object):
+class Joint(URDFType):
     TYPES = ['unknown', 'revolute', 'continuous', 'prismatic',
              'floating', 'planar', 'fixed']
 
-    def __init__(self, name=None, parent=None, child=None, joint_type=None,
-                 axis=None, origin=None,
-                 limit=None, dynamics=None, safety_controller=None,
-                 calibration=None, mimic=None):
+    ATTRIBS = {
+        'name' : (str, True),
+        'type' : (str, True),
+    }
+    ELEMENTS = {
+        'dynamics' : (JointDynamics, False, False),
+        'limit' : (JointLimit, False, False),
+        'mimic' : (JointMimic, False, False),
+        'safety_controller' : (SafetyController, False, False),
+        'calibration' : (JointCalibration, False, False),
+    }
+    TAG = 'joint'
+
+    def __init__(self, name, parent, child, type, axis, origin,
+                 limit, dynamics, safety_controller, calibration, mimic):
         self.name = name
         self.parent = parent
         self.child = child
-        self.type = joint_type
+        self.type = type
         self.axis = axis
         self.origin = origin
         self.limit = limit
@@ -322,208 +461,312 @@ class Joint(xmlr.Object):
         self.calibration = calibration
         self.mimic = mimic
 
-    def check_valid(self):
-        assert self.type in self.TYPES, "Invalid joint type: {}".format(self.type)  # noqa
-
-    # Aliases
-    @property
-    def joint_type(self): return self.type
-
-    @joint_type.setter
-    def joint_type(self, value): self.type = value
-
-xmlr.reflect(Joint, params=[
-    name_attribute,
-    xmlr.Attribute('type', str),
-    origin_element,
-    xmlr.Element('axis', 'element_xyz', False),
-    xmlr.Element('parent', 'element_link'),
-    xmlr.Element('child', 'element_link'),
-    xmlr.Element('limit', JointLimit, False),
-    xmlr.Element('dynamics', JointDynamics, False),
-    xmlr.Element('safety_controller', SafetyController, False),
-    xmlr.Element('calibration', JointCalibration, False),
-    xmlr.Element('mimic', JointMimic, False),
-])
-
-
-class Link(xmlr.Object):
-    def __init__(self, name=None, visual=None, inertial=None, collision=None,
-                 origin=None):
-        self.name = name
-        self.visual = visual
-        self.inertial = inertial
-        self.collision = collision
-        self.origin = origin
-
-xmlr.reflect(Link, params=[
-    name_attribute,
-    origin_element,
-    xmlr.Element('inertial', Inertial, False),
-    xmlr.Element('visual', Visual, False),
-    xmlr.Element('collision', Collision, False)
-])
-
-
-class PR2Transmission(xmlr.Object):
-    def __init__(self, name=None, joint=None, actuator=None, type=None,
-                 mechanicalReduction=1):
-        self.name = name
-        self.type = type
-        self.joint = joint
-        self.actuator = actuator
-        self.mechanicalReduction = mechanicalReduction
-
-
-xmlr.reflect(PR2Transmission, tag='pr2_transmission', params=[
-    name_attribute,
-    xmlr.Attribute('type', str),
-    xmlr.Element('joint', 'element_name'),
-    xmlr.Element('actuator', 'element_name'),
-    xmlr.Element('mechanicalReduction', float)
-])
-
-
-class Actuator(xmlr.Object):
-    def __init__(self, name=None, mechanicalReduction=1):
-        self.name = name
-        self.mechanicalReduction = None
-
-
-xmlr.reflect(Actuator, tag='actuator', params=[
-    name_attribute,
-    xmlr.Element('mechanicalReduction', float, required=False)
-])
-
-
-class TransmissionJoint(xmlr.Object):
-    def __init__(self, name=None):
-        self.aggregate_init()
-        self.name = name
-        self.hardwareInterfaces = []
-
-    def check_valid(self):
-        assert len(self.hardwareInterfaces) > 0, "no hardwareInterface defined"
-
-
-xmlr.reflect(TransmissionJoint, tag='joint', params=[
-    name_attribute,
-    xmlr.AggregateElement('hardwareInterface', str),
-])
-
-
-class Transmission(xmlr.Object):
-    """ New format: http://wiki.ros.org/urdf/XML/Transmission """
-
-    def __init__(self, name=None):
-        self.aggregate_init()
-        self.name = name
-        self.joints = []
-        self.actuators = []
-
-    def check_valid(self):
-        assert len(self.joints) > 0, "no joint defined"
-        assert len(self.actuators) > 0, "no actuator defined"
-
-
-xmlr.reflect(Transmission, tag='new_transmission', params=[
-    name_attribute,
-    xmlr.Element('type', str),
-    xmlr.AggregateElement('joint', TransmissionJoint),
-    xmlr.AggregateElement('actuator', Actuator)
-])
-
-xmlr.add_type('transmission',
-              xmlr.DuckTypedFactory('transmission',
-                                    [Transmission, PR2Transmission]))
-
-
-class Robot(xmlr.Object):
-    def __init__(self, name=None):
-        self.aggregate_init()
-
-        self.name = name
-        self.joints = []
-        self.links = []
-        self.materials = []
-        self.gazebos = []
-        self.transmissions = []
-
-        self.joint_map = {}
-        self.link_map = {}
-
-        self.parent_map = {}
-        self.child_map = {}
-
-    def add_aggregate(self, typeName, elem):
-        xmlr.Object.add_aggregate(self, typeName, elem)
-
-        if typeName == 'joint':
-            joint = elem
-            self.joint_map[joint.name] = joint
-            self.parent_map[joint.child] = (joint.name, joint.parent)
-            if joint.parent in self.child_map:
-                self.child_map[joint.parent].append((joint.name, joint.child))
-            else:
-                self.child_map[joint.parent] = [(joint.name, joint.child)]
-        elif typeName == 'link':
-            link = elem
-            self.link_map[link.name] = link
-
-    def add_link(self, link):
-        self.add_aggregate('link', link)
-
-    def add_joint(self, joint):
-        self.add_aggregate('joint', joint)
-
-    def get_chain(self, root, tip, joints=True, links=True, fixed=True):
-        chain = []
-        if links:
-            chain.append(tip)
-        link = tip
-        while link != root:
-            (joint, parent) = self.parent_map[link]
-            if joints:
-                if fixed or self.joint_map[joint].joint_type != 'fixed':
-                    chain.append(joint)
-            if links:
-                chain.append(parent)
-            link = parent
-        chain.reverse()
-        return chain
-
-    def get_root(self):
-        root = None
-        for link in self.link_map:
-            if link not in self.parent_map:
-                assert root is None, "Multiple roots detected, invalid URDF."
-                root = link
-        assert root is not None, "No roots detected, invalid URDF."
-        return root
+    def get_child_pose(self, configuration=None):
+        if configuration is None or self.type == 'fixed':
+            pose = self.origin
+        elif self.type == 'revolute' or self.type == 'continuous':
+            rotation = trimesh.transformations.rotation_matrix(configuration, self.axis)
+            pose = self.origin.dot(rotation)
+        elif self.type == 'prismatic':
+            translation = np.eye(4)
+            translation[:3,3] = self.axis * configuration
+            pose = self.origin.dot(translation)
+        else:
+            raise NotImplementedError('Unsupported joint type: {}'.format(self.type))
+        return pose
 
     @classmethod
-    def from_parameter_server(cls, key='robot_description'):
+    def _from_xml(cls, node, path):
+        kwargs = cls._parse(node, path)
+        kwargs['parent'] = node.find('parent').attrib['link']
+        kwargs['child'] = node.find('child').attrib['link']
+        axis = node.find('axis')
+        if axis is not None:
+            axis = np.fromstring(axis.attrib['xyz'], sep=' ')
+        else:
+            if kwargs['type'] in set(['revolute', 'prismatic', 'planar']):
+                axis = np.array([1.0, 0.0, 0.0])
+        kwargs['axis'] = axis
+        kwargs['origin'] = parse_origin(node)
+        return Joint(**kwargs)
+
+    def _to_xml(self, parent, path):
+        node = self._unparse(parent, path)
+        parent = ET.Element('parent')
+        parent.attrib['link'] = self.parent
+        node.append(parent)
+        child = ET.Element('child')
+        child.attrib['link'] = self.child
+        node.append(child)
+        if self.axis is not None:
+            axis = ET.Element('axis')
+            axis.attrib['xyz'] = np.array2string(self.axis)[1:-1]
+            node.append(axis)
+        node.append(unparse_origin(self.origin))
+        return node
+
+class Link(URDFType):
+    ATTRIBS = {
+        'name' : (str, True),
+    }
+    ELEMENTS = {
+        'inertial' : (Inertial, False, False),
+        'visuals' : (Visual, False, True),
+        'collisions' : (Collision, False, True),
+    }
+    TAG = 'link'
+
+    def __init__(self, name, visuals, inertial, collisions):
+        self.name = name
+        self.visuals = visuals
+        self.inertial = inertial
+        self.collisions = collisions
+
+class Actuator(URDFType):
+    ATTRIBS = {
+        'name' : (str, True),
+    }
+    TAG = 'actuator'
+
+    def __init__(self, name, mechanicalReduction, hardwareInterfaces):
+        self.name = name
+        self.mechanicalReduction = mechanicalReduction
+        self.hardwareInterfaces = hardwareInterfaces
+
+    @classmethod
+    def _from_xml(cls, node, path):
+        kwargs = cls._parse(node, path)
+        mr = node.find('mechanicalReduction')
+        if mr is not None:
+            mr = float(mr.text)
+        kwargs['mechanicalReduction'] = mr
+        hi = node.findall('hardwareInterface')
+        if len(hi) > 0:
+            hi = [h.text for h in hi]
+        kwargs['hardwareInterfaces'] = hi
+        return Actuator(**kwargs)
+
+    def _to_xml(self, parent, path):
+        node = self._unparse(parent, path)
+        if self.mechanicalReduction is not None:
+            mr = ET.Element('mechanicalReduction')
+            mr.text = str(self.mechanicalReduction)
+            node.append(mr)
+        if len(self.hardwareInterfaces) > 0:
+            for hi in self.hardwareInterfaces:
+                h = ET.Element('hardwareInterface')
+                h.text = hi
+                node.append(h)
+        return node
+
+class TransmissionJoint(URDFType):
+    ATTRIBS = {
+        'name' : (str, True),
+    }
+    TAG = 'joint'
+
+    def __init__(self, name, hardwareInterfaces):
+        self.name = name
+        self.hardwareInterfaces = hardwareInterfaces
+
+    @classmethod
+    def _from_xml(cls, node, path):
+        kwargs = cls._parse(node, path)
+        hi = node.findall('hardwareInterface')
+        if len(hi) > 0:
+            hi = [h.text for h in hi]
+        kwargs['hardwareInterfaces'] = hi
+        return TransmissionJoint(**kwargs)
+
+    def _to_xml(self, parent, path):
+        node = self._unparse(parent, path)
+        if len(self.hardwareInterfaces) > 0:
+            for hi in self.hardwareInterfaces:
+                h = ET.Element('hardwareInterface')
+                h.text = hi
+                node.append(h)
+        return node
+
+class Transmission(URDFType):
+    ATTRIBS = {
+        'name' : (str, True),
+    }
+    ELEMENTS = {
+        'joints' : (TransmissionJoint, True, True),
+        'actuators' : (Actuator, True, True),
+    }
+    TAG = 'transmission'
+
+    def __init__(self, name, type, joints, actuators):
+        self.name = name
+        self.type = type
+        self.joints = joints
+        self.actuators = actuators
+
+    @classmethod
+    def _from_xml(cls, node, path):
+        kwargs = cls._parse(node, path)
+        kwargs['type'] = node.find('type').text
+        return Transmission(**kwargs)
+
+    def _to_xml(self, parent, path):
+        node = self._unparse(parent, path)
+        ttype = ET.Element('type')
+        ttype.text = self.type
+        node.append(ttype)
+        return node
+
+class URDF(URDFType):
+    ATTRIBS = {
+        'name' : (str, True),
+    }
+    ELEMENTS = {
+        'joints' : (Joint, False, True),
+        'links' : (Link, True, True),
+        'transmissions' : (Transmission, False, True),
+        'materials' : (LinkMaterial, False, True),
+    }
+    TAG = 'robot'
+
+    def __init__(self, name, joints, links,
+                 transmissions, materials, other_xml):
+        self.name = name
+        self.joints = joints
+        self.links = links
+        self.transmissions = transmissions
+        self.materials = materials
+        self.other_xml = other_xml
+
+        # Create link map and joint map
+        self._link_map = { l.name : l for l in self.links }
+        self._joint_map = { j.name : j for j in self.joints }
+
+        # Create graph
+        G = nx.Graph()
+        for l in self.links:
+            G.add_node(l)
+
+        base_links = set(self.links)
+        end_links = set(self.links)
+        for j in self.joints:
+            parent = self._link_map[j.parent]
+            child = self._link_map[j.child]
+            G.add_edge(child, parent, object=j)
+            if child in base_links:
+                base_links.remove(child)
+            if parent in end_links:
+                end_links.remove(parent)
+
+        # Check for single base link
+        if len(base_links) != 1:
+            msg = 'URDF has multiple base links: '
+            for l in base_links:
+                msg += '{} '.format(l.name)
+            raise ValueError(msg)
+
+        # Check for cycles
+        # TODO SUPPORT PARALLEL-LINK ROBOTS/GRIPPERS
+        cycle_bases = nx.cycle_basis(G)
+        if len(cycle_bases) > 0:
+            raise ValueError('URDF does not support cycles')
+
+        self._graph = G
+        self._base_link = list(base_links)[0]
+        self._end_links = end_links
+        self._paths_to_base = nx.single_target_shortest_path(G, self._base_link)
+
+    def forward_kinematics(self, joint_configurations=None):
+        """From a dictionary mapping joint names to joint configurations
+        (float or (2,) vector for planar joints), compute the pose of each link.
         """
-        Retrieve the robot model on the parameter server
-        and parse it to create a URDF robot structure.
+        if joint_configurations is None:
+            joint_configurations = {}
 
-        Warning: this requires roscore to be running.
-        """
-        # Could move this into xml_reflection
-        import rospy
-        return cls.from_xml_string(rospy.get_param(key))
+        # Compute the pose of each link
+        link_to_pose = { l : None for l in self.links }
 
+        # Iterate over the links and compute poses for each
+        for link in self.links:
+            pose = np.eye(4)
+            path = self._paths_to_base[link]
+            for i in range(len(path)-1):
+                child = path[i]
+                parent = path[i+1]
 
-xmlr.reflect(Robot, tag='robot', params=[
-    xmlr.Attribute('name', str, False),  # Is 'name' a required attribute?
-    xmlr.AggregateElement('link', Link),
-    xmlr.AggregateElement('joint', Joint),
-    xmlr.AggregateElement('gazebo', xmlr.RawType()),
-    xmlr.AggregateElement('transmission', 'transmission'),
-    xmlr.AggregateElement('material', Material)
-])
+                # Get joint
+                joint = self._graph.get_edge_data(child, parent)['object']
 
-# Make an alias
-URDF = Robot
+                # Get joint configuration
+                cfg = None
+                if joint.name in joint_configurations:
+                    cfg = joint_configurations[joint.name]
+                elif joint.mimic is not None:
+                    mimic_joint = self._joint_map[joint.mimic.joint]
+                    if mimic_joint.name in joint_configurations:
+                        cfg = joint_configurations[mimic_joint.name]
+                        multiplier = 1.0
+                        if joint.mimic.multiplier is not None:
+                            multiplier = joint.mimic.multiplier
+                        offset = joint.mimic.offset
+                        cfg = multiplier * cfg + offset
+                child_pose = joint.get_child_pose(cfg)
 
-xmlr.end_namespace()
+                pose = child_pose.dot(pose)
+
+                if link_to_pose[parent] is not None:
+                    pose = link_to_pose[parent].dot(pose)
+                    break
+
+            link_to_pose[link] = pose
+
+        #link_name_to_pose = { l.name : link_to_pose[l] for l in link_to_pose }
+
+        return link_to_pose
+
+    @classmethod
+    def _from_xml(cls, node, path):
+        kwargs = cls._parse(node, path)
+
+        extra_xml_node = ET.Element('extra')
+        for child in node:
+            if child.tag not in set(['joint', 'link', 'transmission', 'material']):
+                extra_xml_node.append(child)
+
+        data = ET.tostring(extra_xml_node)
+        kwargs['other_xml'] = data
+        return URDF(**kwargs)
+
+    def _to_xml(self, parent, path):
+        node = self._unparse(parent, path)
+        extra_tree = ET.fromstring(self.other_xml)
+        for child in extra_tree:
+            node.append(child)
+        return node
+
+    @staticmethod
+    def from_xml_file(file_obj):
+        if isinstance(file_obj, six.string_types):
+            if os.path.isfile(file_obj):
+                parser = ET.XMLParser(remove_comments=True, remove_blank_text=True)
+                tree = ET.parse(file_obj, parser=parser)
+                path, _ = os.path.split(file_obj)
+            else:
+                tree = ET.fromstring(file_obj)
+                path = ''
+        else:
+            parser = ET.XMLParser(remove_comments=True, remove_blank_text=True)
+            tree = ET.parse(file_obj, parser=parser)
+            path, _ = os.path.split(file_obj.name)
+
+        node = tree.getroot()
+        return URDF._from_xml(node, path)
+
+    def to_xml_file(self, file_obj):
+        if isinstance(file_obj, six.string_types):
+            path, _ = os.path.split(file_obj)
+        else:
+            path, _ = os.path.split(file_obj.name)
+
+        node = self._to_xml(None, path)
+        tree = ET.ElementTree(node)
+        tree.write(file_obj, pretty_print=True, xml_declaration=True, encoding='utf-8')
