@@ -833,8 +833,7 @@ class URDF(URDFType):
                 tree = ET.parse(file_obj, parser=parser)
                 path, _ = os.path.split(file_obj)
             else:
-                tree = ET.fromstring(file_obj)
-                path = ''
+                raise ValueError('{} is not a file'.format(file_obj))
         else:
             parser = ET.XMLParser(remove_comments=True, remove_blank_text=True)
             tree = ET.parse(file_obj, parser=parser)
