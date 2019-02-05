@@ -445,12 +445,12 @@ class JointMimic(URDFType):
     ATTRIBS = {
         'joint' : (str, True),
         'multiplier' : (float, False),
-        'offset' : (float, True),
+        'offset' : (float, False),
     }
     TAG = 'mimic'
 
     def __init__(self, joint, multiplier, offset):
-        self.joint = joint_name
+        self.joint = joint
         self.multiplier = multiplier
         self.offset = offset
 
@@ -460,7 +460,6 @@ class SafetyController(URDFType):
         'soft_upper_limit' : (float, False),
         'k_position' : (float, False),
         'k_velocity' : (float, True),
-        'offset' : (float, True),
     }
     TAG = 'safety_controller'
 
@@ -759,18 +758,23 @@ class URDF(URDFType):
         self._end_links = end_links
         self._paths_to_base = nx.single_target_shortest_path(G, self._base_link)
 
-    def forward_kinematics(self, joint_configurations=None):
+    def forward_kinematics(self, joint_cfg=None, link_names=None):
         """From a dictionary mapping joint names to joint configurations
         (float or (2,) vector for planar joints), compute the pose of each link.
         """
-        if joint_configurations is None:
-            joint_configurations = {}
-
-        # Compute the pose of each link
-        link_to_pose = { l : None for l in self.links }
+        if joint_cfg is None:
+            joint_cfg = {}
 
         # Iterate over the links and compute poses for each
-        for link in self.links:
+        if link_names is not None:
+            links = [l for l in self.links if l.name in link_names]
+        else:
+            links = self.links
+
+        # Compute the pose of each link
+        link_to_pose = { l : None for l in links }
+
+        for link in links:
             pose = np.eye(4)
             path = self._paths_to_base[link]
             for i in range(len(path)-1):
@@ -782,16 +786,18 @@ class URDF(URDFType):
 
                 # Get joint configuration
                 cfg = None
-                if joint.name in joint_configurations:
-                    cfg = joint_configurations[joint.name]
+                if joint.name in joint_cfg:
+                    cfg = joint_cfg[joint.name]
                 elif joint.mimic is not None:
                     mimic_joint = self._joint_map[joint.mimic.joint]
-                    if mimic_joint.name in joint_configurations:
-                        cfg = joint_configurations[mimic_joint.name]
+                    if mimic_joint.name in joint_cfg:
+                        cfg = joint_cfg[mimic_joint.name]
                         multiplier = 1.0
+                        offset = 0.0
                         if joint.mimic.multiplier is not None:
                             multiplier = joint.mimic.multiplier
-                        offset = joint.mimic.offset
+                        if joint.mimic.offset is not None:
+                            offset = joint.mimic.offset
                         cfg = multiplier * cfg + offset
                 child_pose = joint.get_child_pose(cfg)
 
