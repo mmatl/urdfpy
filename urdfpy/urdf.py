@@ -805,7 +805,7 @@ class URDF(URDFType):
 
                 pose = child_pose.dot(pose)
 
-                if link_to_pose[parent] is not None:
+                if parent in link_to_pose and link_to_pose[parent] is not None:
                     pose = link_to_pose[parent].dot(pose)
                     break
 
