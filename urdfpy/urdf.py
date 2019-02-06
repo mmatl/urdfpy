@@ -295,9 +295,9 @@ class LinkMaterial(URDFType):
         return LinkMaterial(**kwargs)
 
     def _to_xml(self, parent, path):
-        if parent.tag == 'robot':
+        if parent.tag != 'robot':
             node = ET.Element('material')
-            node.attrib['name'] = name
+            node.attrib['name'] = self.name
             return node
         else:
             node = self._unparse(parent, path)
