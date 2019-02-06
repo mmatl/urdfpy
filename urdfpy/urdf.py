@@ -169,6 +169,7 @@ class Sphere(URDFType):
 
     def __init__(self, radius):
         self.radius = radius
+        self._mesh = None
 
     @property
     def mesh(self):
@@ -602,15 +603,15 @@ class Joint(URDFType):
         self.calibration = calibration
         self.mimic = mimic
 
-    def get_child_pose(self, configuration=None):
-        if configuration is None or self.type == 'fixed':
+    def get_child_pose(self, cfg=None):
+        if cfg is None or self.type == 'fixed':
             pose = self.origin
         elif self.type == 'revolute' or self.type == 'continuous':
-            rotation = trimesh.transformations.rotation_matrix(configuration, self.axis)
+            rotation = trimesh.transformations.rotation_matrix(cfg, self.axis)
             pose = self.origin.dot(rotation)
         elif self.type == 'prismatic':
             translation = np.eye(4)
-            translation[:3,3] = self.axis * configuration
+            translation[:3,3] = self.axis * cfg
             pose = self.origin.dot(translation)
         else:
             raise NotImplementedError('Unsupported joint type: {}'.format(self.type))
@@ -774,6 +775,7 @@ class URDF(URDFType):
         # Compute the pose of each link
         link_to_pose = { l : None for l in links }
 
+        # Iterate over the links and compute poses for each
         for link in links:
             pose = np.eye(4)
             path = self._paths_to_base[link]
@@ -784,7 +786,7 @@ class URDF(URDFType):
                 # Get joint
                 joint = self._graph.get_edge_data(child, parent)['object']
 
-                # Get joint configuration
+                # Get joint cfg
                 cfg = None
                 if joint.name in joint_cfg:
                     cfg = joint_cfg[joint.name]
