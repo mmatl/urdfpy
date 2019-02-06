@@ -180,7 +180,6 @@ class Sphere(URDFType):
 class Mesh(URDFType):
     ATTRIBS = {
         'filename' : (str, True),
-        'scale' : (float, False)
     }
     TAG = 'mesh'
 
@@ -203,6 +202,13 @@ class Mesh(URDFType):
                 m = m + n
             mesh = m
         kwargs['mesh'] = mesh
+
+        scale = None
+        if 'scale' in node.attrib:
+            scale = np.fromstring(node.attrib['scale'], sep=' ')
+        kwargs['scale'] = scale
+
+        # Get scale
         return Mesh(**kwargs)
 
     def _to_xml(self, parent, path):
@@ -211,9 +217,12 @@ class Mesh(URDFType):
         if not os.path.exists(p):
             os.makedirs(p)
         self.mesh.export(filepath)
-        return self._unparse(parent, path)
+        node = self._unparse(parent, path)
+        if self.scale is not None:
+            node.attrib['scale'] = np.array2string(self.scale)[1:-1]
+        return node
 
-class LinkGeometry(URDFType):
+class Geometry(URDFType):
     ELEMENTS = {
         'box' : (Box, False, False),
         'cylinder' : (Cylinder, False, False),
@@ -243,7 +252,7 @@ class LinkGeometry(URDFType):
     def trimesh(self):
         return self.geometry.mesh
 
-class LinkTexture(URDFType):
+class Texture(URDFType):
     ATTRIBS = {
         'filename' : (str, True)
     }
@@ -261,7 +270,7 @@ class LinkTexture(URDFType):
         if not os.path.exists(p):
             os.makedirs(p)
         kwargs['image'] = ColorImage.open(filepath)
-        return LinkTexture(**kwargs)
+        return Texture(**kwargs)
 
     def _to_xml(self, parent, path):
         filepath = os.path.join(path, self.filename)
@@ -271,12 +280,12 @@ class LinkTexture(URDFType):
         self.image.save(filepath)
         return self._unparse(parent, path)
 
-class LinkMaterial(URDFType):
+class Material(URDFType):
     ATTRIBS = {
         'name' : (str, True)
     }
     ELEMENTS = {
-        'texture' : (LinkTexture, False, False),
+        'texture' : (Texture, False, False),
     }
     TAG = 'material'
 
@@ -292,7 +301,7 @@ class LinkMaterial(URDFType):
         if color is not None:
             color = np.fromstring(color.attrib['rgba'], sep=' ')
         kwargs['color'] = color
-        return LinkMaterial(**kwargs)
+        return Material(**kwargs)
 
     def _to_xml(self, parent, path):
         if parent.tag != 'robot':
@@ -312,7 +321,7 @@ class Collision(URDFType):
         'name' : (str, False)
     }
     ELEMENTS = {
-        'geometry' : (LinkGeometry, True, False),
+        'geometry' : (Geometry, True, False),
     }
     TAG = 'collision'
 
@@ -337,8 +346,8 @@ class Visual(URDFType):
         'name' : (str, False)
     }
     ELEMENTS = {
-        'geometry' : (LinkGeometry, True, False),
-        'material' : (LinkMaterial, False, False),
+        'geometry' : (Geometry, True, False),
+        'material' : (Material, False, False),
     }
     TAG = 'visual'
 
@@ -708,7 +717,7 @@ class URDF(URDFType):
         'joints' : (Joint, False, True),
         'links' : (Link, True, True),
         'transmissions' : (Transmission, False, True),
-        'materials' : (LinkMaterial, False, True),
+        'materials' : (Material, False, True),
     }
     TAG = 'robot'
 
