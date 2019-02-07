@@ -765,8 +765,16 @@ class URDF(URDFType):
 
         self._graph = G
         self._base_link = list(base_links)[0]
-        self._end_links = end_links
+        self._end_links = list(end_links)
         self._paths_to_base = nx.single_target_shortest_path(G, self._base_link)
+
+    @property
+    def base_link(self):
+        return self._base_link
+
+    @property
+    def end_links(self):
+        return self._end_links
 
     def forward_kinematics(self, joint_cfg=None, link_names=None):
         """From a dictionary mapping joint names to joint configurations
