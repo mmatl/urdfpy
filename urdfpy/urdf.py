@@ -196,10 +196,10 @@ class Mesh(URDFType):
         if node.getparent().getparent().tag == Visual.TAG:
             process = False
         mesh = trimesh.load_mesh(os.path.join(path, kwargs['filename']), process=process)
-        if isinstance(mesh, list):
+        if process and (isinstance(mesh, list) or isinstance(mesh, tuple)):
             m = mesh[0]
             for n in mesh[1:]:
-                m = m + n
+                m += n
             mesh = m
         kwargs['mesh'] = mesh
 
@@ -216,7 +216,7 @@ class Mesh(URDFType):
         p, _ = os.path.split(filepath)
         if not os.path.exists(p):
             os.makedirs(p)
-        self.mesh.export(filepath)
+        trimesh.exchange.export.export_mesh(self.mesh, filepath)
         node = self._unparse(parent, path)
         if self.scale is not None:
             node.attrib['scale'] = np.array2string(self.scale)[1:-1]
