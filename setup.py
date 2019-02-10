@@ -7,7 +7,6 @@ requirements = [
     'lxml',
     'networkx',
     'numpy',
-    'pyassimp',
     'six',
     'trimesh',
 ]
