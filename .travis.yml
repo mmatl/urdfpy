@@ -7,8 +7,10 @@ python:
 - '3.6'
 install:
 - pip install .
+- pip install pytest
 script:
 - python -c "import urdfpy"
+- pytest -W default tests/
 deploy:
   provider: pypi
   skip_existing: true

@@ -7,6 +7,7 @@ requirements = [
     'lxml',
     'networkx',
     'numpy',
+    'pycollada',
     'six',
     'trimesh',
 ]
