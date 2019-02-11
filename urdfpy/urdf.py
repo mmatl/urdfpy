@@ -191,12 +191,12 @@ class Mesh(URDFType):
     @classmethod
     def _from_xml(cls, node, path):
         kwargs = cls._parse(node, path)
-        # Process collision geometry, but not visual geometry
-        process = True
+        # Join collision geometry, but not visual geometry
+        join = True
         if node.getparent().getparent().tag == Visual.TAG:
-            process = False
-        mesh = trimesh.load_mesh(os.path.join(path, kwargs['filename']), process=process)
-        if process and (isinstance(mesh, list) or isinstance(mesh, tuple)):
+            join = False
+        mesh = trimesh.load_mesh(os.path.join(path, kwargs['filename']))
+        if join and (isinstance(mesh, list) or isinstance(mesh, tuple)):
             m = mesh[0]
             for n in mesh[1:]:
                 m += n
