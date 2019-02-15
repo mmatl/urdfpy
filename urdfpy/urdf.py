@@ -830,6 +830,17 @@ class URDF(URDFType):
 
         return link_to_pose
 
+    def joint_limit_cfgs(self):
+        lb = {}
+        ub = {}
+        for joint in self.joints:
+            if joint.limit is not None:
+                if joint.limit.lower is not None:
+                    lb[joint.name] = joint.limit.lower
+                if joint.limit.upper is not None:
+                    ub[joint.name] = joint.limit.upper
+        return lb, ub
+
     @classmethod
     def _from_xml(cls, node, path):
         kwargs = cls._parse(node, path)
