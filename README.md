@@ -21,5 +21,5 @@ pip install urdfpy
 ```
 
 ## User Guide
-Please see the user guide [here](https://urdfpy.readthedocs.io/en/latest/) for
+Please see the user guide [here](https://urdfpy.readthedocs.io/en/latest/examples/index.html) for
 more information.
