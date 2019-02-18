@@ -506,6 +506,9 @@ class Mesh(URDFType):
         combine = node.getparent().getparent().tag == Collision._TAG
         meshes = load_meshes(fn)
         if combine:
+            # Delete visuals for simplicity
+            for m in meshes:
+                m.visual = trimesh.visual.ColorVisuals(mesh=m)
             meshes = [meshes[0] + meshes[1:]]
         kwargs['meshes'] = meshes
 
@@ -2416,7 +2419,7 @@ class URDF(URDFType):
                         cfg = joint.mimic.multiplier * cfg + joint.mimic.offset
                 elif joint in joint_cfg:
                     cfg = joint_cfg[joint]
-                pose = pose.dot(joint.get_child_pose(cfg))
+                pose = joint.get_child_pose(cfg).dot(pose)
 
                 # Check existing FK to see if we can exit early
                 if parent in fk:
