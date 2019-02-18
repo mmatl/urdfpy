@@ -4,27 +4,42 @@ Author: Matthew Matl
 from setuptools import setup
 
 requirements = [
-    'lxml',
-    'networkx',
-    'numpy',
-    'pycollada',
-    'six',
-    'trimesh',
+    'lxml',       # For XML DOM Tree
+    'networkx',   # For joint graph
+    'numpy',      # Numpy
+    'PIL',        # For texture image loading
+    'pycollada',  # COLLADA (.dae) mesh loading via trimesh
+    'six',        # Python 2/3 compatability
+    'trimesh',    # Mesh geometry loading/creation/saving
+]
+
+dev_requirements = [
+    'flake8',            # Code formatting checker
+    'pre-commit',        # Pre-commit hooks
+    'pytest',            # Code testing
+    'pytest-cov',        # Coverage testing
+    'tox',               # Automatic virtualenv testing
+]
+
+docs_requirements = [
+    'sphinx',            # General doc library
+    'sphinx_rtd_theme',  # RTD theme for sphinx
+    'sphinx-automodapi'  # For generating nice tables
 ]
 
 exec(open('urdfpy/version.py').read())
 
 setup(
     name='urdfpy',
-    version = __version__,
-    description = 'URDF parser and viewer for Python',
-    long_description = 'URDF parser and viewer for Python',
-    author = 'Matthew Matl',
-    author_email = 'matthewcmatl@gmail.com',
-    license = 'MIT License',
-    url = 'https://github.com/mmatl/urdfpy',
-    keywords = 'robotics ros urdf robots',
-    classifiers = [
+    version=__version__,
+    description='URDF parser and manipulator for Python',
+    long_description='URDF parser and manipulator for Python',
+    author='Matthew Matl',
+    author_email='matthewcmatl@gmail.com',
+    license='MIT License',
+    url='https://github.com/mmatl/urdfpy',
+    keywords='robotics ros urdf robots parser',
+    classifiers=[
         'Development Status :: 4 - Beta',
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python',
@@ -34,6 +49,9 @@ setup(
         'Natural Language :: English',
         'Topic :: Scientific/Engineering'
     ],
-    packages = ['urdfpy'],
-    install_requires = requirements,
+    install_requires=requirements,
+    extras_require={
+        'dev': dev_requirements,
+        'docs': docs_requirements,
+    }
 )
