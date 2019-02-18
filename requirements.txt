@@ -1,0 +1,10 @@
+lxml
+networkx
+numpy
+PIL
+pycollada
+six
+trimesh
+sphinx
+sphinx_rtd_theme
+sphinx-automodapi
