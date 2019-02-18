@@ -3,6 +3,7 @@ networkx
 numpy
 pillow
 pycollada
+pyrender
 six
 trimesh
 sphinx

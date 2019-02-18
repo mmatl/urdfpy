@@ -9,6 +9,7 @@ requirements = [
     'numpy',      # Numpy
     'pillow',     # For texture image loading
     'pycollada',  # COLLADA (.dae) mesh loading via trimesh
+    'pyrender',   # For visualization
     'six',        # Python 2/3 compatability
     'trimesh',    # Mesh geometry loading/creation/saving
 ]
