@@ -2670,8 +2670,7 @@ class URDF(URDFType):
         # Pop the visualizer asynchronously
         v = pyrender.Viewer(scene, run_in_thread=True,
                             use_raymond_lighting=True,
-                            view_center=blp[:3,3],
-                            record=True)
+                            view_center=blp[:3,3])
 
         # Now, run our loop
         i = 0
@@ -2690,12 +2689,7 @@ class URDF(URDFType):
                 node_map[mesh].matrix = pose
             v.render_lock.release()
 
-            if i == 0:
-                v.close_external()
-
             time.sleep(1.0 / fps)
-
-        v.save_gif('./docs/source/_static/ur5_two_joints.gif')
 
     def show(self, cfg=None, use_collision=False):
         """Visualize the URDF in a given configuration.
