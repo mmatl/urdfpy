@@ -7,7 +7,7 @@ requirements = [
     'lxml',       # For XML DOM Tree
     'networkx',   # For joint graph
     'numpy',      # Numpy
-    'PIL',        # For texture image loading
+    'pillow',     # For texture image loading
     'pycollada',  # COLLADA (.dae) mesh loading via trimesh
     'six',        # Python 2/3 compatability
     'trimesh',    # Mesh geometry loading/creation/saving
