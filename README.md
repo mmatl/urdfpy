@@ -8,7 +8,7 @@ and visualizing URDF files.
 
 Extensive API documentation is provided [here](https://urdfpy.readthedocs.io/en/latest/).
 
-<p float="left" align="center">
+<p float="left">
   <img src="https://github.com/mmatl/urdfpy/blob/master/docs/source/_static/robotiq.gif?raw=true" alt="GIF of Viewer" width="300"/>
   <img src="https://github.com/mmatl/urdfpy/blob/master/docs/source/_static/ur5.gif?raw=true" alt="GIF of Viewer" width="300"/>
 </p>
