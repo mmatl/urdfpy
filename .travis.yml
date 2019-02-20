@@ -5,12 +5,18 @@ python:
 - '2.7'
 - '3.5'
 - '3.6'
+
 install:
 - pip install .
-- pip install pytest
+- pip install pytest pytest-cov coveralls
+
 script:
 - python -c "import urdfpy"
-- pytest -W default tests/
+- pytest -W default --cov=urdfpy tests/
+
+after_success:
+- coveralls || true
+
 deploy:
   provider: pypi
   skip_existing: true

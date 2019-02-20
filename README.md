@@ -2,6 +2,7 @@
 
 [![Build Status](https://travis-ci.org/mmatl/urdfpy.svg?branch=master)](https://travis-ci.org/mmatl/urdfpy)
 [![Documentation Status](https://readthedocs.org/projects/urdfpy/badge/?version=latest)](https://urdfpy.readthedocs.io/en/latest/?badge=latest)
+[![Coverage Status](https://coveralls.io/repos/github/mmatl/urdfpy/badge.svg?branch=master)](https://coveralls.io/github/mmatl/urdfpy?branch=master)
 
 Urdfpy is a simple and easy-to-use library for loading, manipulating, saving,
 and visualizing URDF files.
