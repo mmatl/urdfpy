@@ -6,7 +6,6 @@ from lxml import etree as ET
 import networkx as nx
 import numpy as np
 import PIL
-import pyrender
 import trimesh
 import six
 
@@ -2598,6 +2597,8 @@ class URDF(URDFType):
         .. image:: /_static/ur5_three_joints.gif
 
         """
+        import pyrender  # Save pyrender import for here for CI
+
         ct = cfg_trajectory
 
         traj_len = None  # Length of the trajectory in steps
@@ -2704,6 +2705,8 @@ class URDF(URDFType):
             If True, the collision geometry is visualized instead of
             the visual geometry.
         """
+        import pyrender  # Save pyrender import for here for CI
+
         if use_collision:
             fk = self.collision_trimesh_fk(cfg=cfg)
         else:
