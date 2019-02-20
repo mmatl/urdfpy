@@ -8,7 +8,7 @@ python:
 
 install:
 - pip install .
-- pip install pytest pytest-cov coveralls
+- pip install pytest>=3.6 pytest-cov coveralls
 
 script:
 - python -c "import urdfpy"
