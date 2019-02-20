@@ -12,7 +12,7 @@ install:
 
 script:
 - python -c "import urdfpy"
-- pytest -W default --cov=urdfpy tests/
+- pytest --cov=urdfpy tests/
 
 after_success:
 - coveralls || true
