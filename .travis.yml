@@ -1,19 +1,19 @@
 language: python
 sudo: required
-dist: trusty
+dist: xenial
+
 python:
 - '2.7'
 - '3.5'
 - '3.6'
+- '3.7'
 
 install:
 - pip install .
-- pip install pytest pytest-cov>=2.4.0,<2.6
-- pip install coveralls
+- pip install pytest pytest-cov coveralls
 
 script:
-- python -c "import urdfpy"
-- pytest --cov=urdfpy tests/
+- pytest --cov=urdfpy tests
 
 after_success:
 - coveralls || true
