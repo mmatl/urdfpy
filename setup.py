@@ -50,8 +50,7 @@ setup(
         'Natural Language :: English',
         'Topic :: Scientific/Engineering'
     ],
-    keywords = 'urdf ros robotics description kinematics',
-    packages = ['urdfpy'],
+    packages=['urdfpy'],
     setup_requires = requirements,
     install_requires=requirements,
     extras_require={
