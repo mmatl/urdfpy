@@ -2175,7 +2175,7 @@ class URDF(URDFType):
         self._merge_materials()
 
         # Validate the joints and transmissions
-        self._actuated_joints = self._validate_joints()
+        actuated_joints = self._validate_joints()
         self._validate_transmissions()
 
         # Create the link graph and base link/end link sets
@@ -2198,6 +2198,8 @@ class URDF(URDFType):
         self._paths_to_base = nx.shortest_path(
             self._G, target=self._base_link
         )
+
+        self._actuated_joints = self._sort_joints(actuated_joints)
 
         # Cache the reverse topological order (useful for speeding up FK,
         # as we want to start at the base and work outward to cache
@@ -2309,9 +2311,20 @@ class URDF(URDFType):
         """list of :class:`.Joint` : The joints that are independently
         actuated.
 
-        This excludes mimic joints and fixed joints.
+        This excludes mimic joints and fixed joints. The joints are listed
+        in topological order, starting from the base-most joint.
         """
         return self._actuated_joints
+
+    @property
+    def actuated_joint_names(self):
+        """list of :class:`.Joint` : The names of joints that are independently
+        actuated.
+
+        This excludes mimic joints and fixed joints. The joints are listed
+        in topological order, starting from the base-most joint.
+        """
+        return [j.name for j in self._actuated_joints]
 
     @property
     def base_link(self):
@@ -2349,62 +2362,78 @@ class URDF(URDFType):
                     ub[joint] = joint.limit.upper
         return (lb, ub)
 
-    def link_fk(self, cfg=None, links=None):
+    @property
+    def joint_limits(self):
+        """(n,2) float : A lower and upper limit for each joint.
+        """
+        limits = []
+        for joint in self.actuated_joints:
+            limit = [-np.infty, np.infty]
+            if joint.limit is not None:
+                if joint.limit.lower is not None:
+                    limit[0] = joint.limit.lower
+                if joint.limit.upper is not None:
+                    limit[1] = joint.limit.upper
+            limits.append([limit])
+        return np.array(limits)
+
+    def link_fk(self, cfg=None, link=None, links=None, use_names=False):
         """Computes the poses of the URDF's links via forward kinematics.
 
         Parameters
         ----------
-        cfg : dict
+        cfg : dict or (n), float
             A map from joints or joint names to configuration values for
-            each joint. If not specified, all joints are assumed to be
-            in their default configurations.
+            each joint, or a list containing a value for each actuated joint
+            in sorted order from the base link.
+            If not specified, all joints are assumed to be in their default
+            configurations.
+        link : str or :class:`.Link`
+            A single link or link name to return a pose for.
         links : list of str or list of :class:`.Link`
             The links or names of links to perform forward kinematics on.
-            Only these links will be in the returned map. If not specified,
-            all links are returned.
+            Only these links will be in the returned map. If neither
+            link nor links are specified all links are returned.
+        use_names : bool
+            If True, the returned dictionary will have keys that are string
+            link names rather than the links themselves.
 
         Returns
         -------
-        fk : dict
+        fk : dict or (4,4) float
             A map from links to 4x4 homogenous transform matrices that
-            position them relative to the base link's frame.
+            position them relative to the base link's frame, or a single
+            4x4 matrix if ``link`` is specified.
         """
-
         # Process config value
-        joint_cfg = {}
-        if cfg is None:
-            cfg = {}
-        else:
-            for joint in cfg:
-                if isinstance(joint, six.string_types):
-                    joint_cfg[self._joint_map[joint]] = cfg[joint]
-                elif isinstance(joint, Joint):
-                    joint_cfg[joint] = cfg[joint]
-                else:
-                    raise TypeError('Got key of type {} in cfg map'
-                                    .format(type(joint)))
+        joint_cfg = self._process_cfg(cfg)
 
         # Process link set
         link_set = set()
-        if links is None:
-            link_set = self.links
-        else:
-            for link in links:
-                if isinstance(link, six.string_types):
-                    link_set.add(self._link_map[link])
-                elif isinstance(link, Link):
-                    link_set.add(link)
+        if link is not None:
+            if isinstance(link, six.string_types):
+                link_set.add(self._link_map[link])
+            elif isinstance(link, Link):
+                link_set.add(link)
+        elif links is not None:
+            for lnk in links:
+                if isinstance(lnk, six.string_types):
+                    link_set.add(self._link_map[lnk])
+                elif isinstance(lnk, Link):
+                    link_set.add(lnk)
                 else:
                     raise TypeError('Got object of type {} in links list'
-                                    .format(type(link)))
+                                    .format(type(lnk)))
+        else:
+            link_set = self.links
 
         # Compute forward kinematics in reverse topological order
         fk = {}
-        for link in self._reverse_topo:
-            if link not in link_set:
+        for lnk in self._reverse_topo:
+            if lnk not in link_set:
                 continue
             pose = np.eye(4)
-            path = self._paths_to_base[link]
+            path = self._paths_to_base[lnk]
             for i in range(len(path) - 1):
                 child = path[i]
                 parent = path[i + 1]
@@ -2424,8 +2453,15 @@ class URDF(URDFType):
                 if parent in fk:
                     pose = fk[parent].dot(pose)
                     break
-            fk[link] = pose
+            fk[lnk] = pose
 
+        if link:
+            if isinstance(link, six.string_types):
+                return fk[self._link_map[link]]
+            else:
+                return fk[link]
+        if use_names:
+            return {ell.name: fk[ell] for ell in fk}
         return fk
 
     def visual_geometry_fk(self, cfg=None, links=None):
@@ -2433,10 +2469,12 @@ class URDF(URDFType):
 
         Parameters
         ----------
-        cfg : dict
+        cfg : dict or (n), float
             A map from joints or joint names to configuration values for
-            each joint. If not specified, all joints are assumed to be
-            in their default configurations.
+            each joint, or a list containing a value for each actuated joint
+            in sorted order from the base link.
+            If not specified, all joints are assumed to be in their default
+            configurations.
         links : list of str or list of :class:`.Link`
             The links or names of links to perform forward kinematics on.
             Only geometries from these links will be in the returned map.
@@ -2462,10 +2500,12 @@ class URDF(URDFType):
 
         Parameters
         ----------
-        cfg : dict
+        cfg : dict or (n), float
             A map from joints or joint names to configuration values for
-            each joint. If not specified, all joints are assumed to be
-            in their default configurations.
+            each joint, or a list containing a value for each actuated joint
+            in sorted order from the base link.
+            If not specified, all joints are assumed to be in their default
+            configurations.
         links : list of str or list of :class:`.Link`
             The links or names of links to perform forward kinematics on.
             Only trimeshes from these links will be in the returned map.
@@ -2499,10 +2539,12 @@ class URDF(URDFType):
 
         Parameters
         ----------
-        cfg : dict
+        cfg : dict or (n), float
             A map from joints or joint names to configuration values for
-            each joint. If not specified, all joints are assumed to be
-            in their default configurations.
+            each joint, or a list containing a value for each actuated joint
+            in sorted order from the base link.
+            If not specified, all joints are assumed to be in their default
+            configurations.
         links : list of str or list of :class:`.Link`
             The links or names of links to perform forward kinematics on.
             Only geometries from these links will be in the returned map.
@@ -2528,10 +2570,12 @@ class URDF(URDFType):
 
         Parameters
         ----------
-        cfg : dict
+        cfg : dict or (n), float
             A map from joints or joint names to configuration values for
-            each joint. If not specified, all joints are assumed to be
-            in their default configurations.
+            each joint, or a list containing a value for each actuated joint
+            in sorted order from the base link.
+            If not specified, all joints are assumed to be in their default
+            configurations.
         links : list of str or list of :class:`.Link`
             The links or names of links to perform forward kinematics on.
             Only trimeshes from these links will be in the returned map.
@@ -2558,10 +2602,11 @@ class URDF(URDFType):
 
         Parameters
         ----------
-        cfg_trajectory : dict
+        cfg_trajectory : dict or (m,n) float
             A map from joints or joint names to lists of configuration values
-            for each joint along the trajectory. If not specified,
-            all joints will articulate from limit to limit.
+            for each joint along the trajectory, or a vector of
+            vectors where the second dimension contains a value for each joint.
+            If not specified, all joints will articulate from limit to limit.
             The trajectory steps are assumed to be equally spaced out in time.
         loop_time : float
             The time to loop the animation for, in seconds. The trajectory
@@ -2621,6 +2666,13 @@ class URDF(URDFType):
                     elif traj_len != len(val):
                         raise ValueError('Trajectories must be same length')
                     ct_np[k] = val
+        elif isinstance(ct, (list, tuple, np.ndarray)):
+            ct = np.asanyarray(ct)
+            if ct.ndim == 1:
+                ct = ct.reshape(-1, 1)
+            if ct.ndim != 2 or ct.shape[1] != len(self.actuated_joints):
+                raise ValueError('Cfg trajectory must have entry for each joint')
+            ct_np = {j: ct[:,i] for i, j in enumerate(self.actuated_joints)}
         else:
             raise TypeError('Invalid type for cfg_trajectory: {}'
                             .format(type(cfg_trajectory)))
@@ -2697,10 +2749,12 @@ class URDF(URDFType):
 
         Parameters
         ----------
-        cfg : dict
+        cfg : dict or (n), float
             A map from joints or joint names to configuration values for
-            each joint. If not specified, all joints are assumed to be
-            in their default configurations.
+            each joint, or a list containing a value for each actuated joint
+            in sorted order from the base link.
+            If not specified, all joints are assumed to be in their default
+            configurations.
         use_collision : bool
             If True, the collision geometry is visualized instead of
             the visual geometry.
@@ -2829,7 +2883,29 @@ class URDF(URDFType):
                     )
             elif joint.joint_type != 'fixed':
                 actuated_joints.append(joint)
+
+        # Do a depth-first search
         return actuated_joints
+
+    def _sort_joints(self, joints):
+        """Sort joints by ascending distance from the base link (topologically).
+
+        Parameters
+        ----------
+        joints : list of :class:`.Joint`
+            The joints to sort.
+
+        Returns
+        -------
+        joints : list of :class:`.Joint`
+            The sorted joints.
+        """
+        lens = []
+        for joint in joints:
+            child_link = self._link_map[joint.child]
+            lens.append(len(self._paths_to_base[child_link]))
+        order = np.argsort(lens)
+        return np.array(joints)[order].tolist()
 
     def _validate_transmissions(self):
         """Raise an exception of any transmissions are invalidly specified.
@@ -2894,6 +2970,29 @@ class URDF(URDFType):
             if len(nx.ancestors(self._G, n)) == 0:
                 end_links.append(n)
         return base_link, end_links
+
+    def _process_cfg(self, cfg):
+        """Process a joint configuration spec into a dictionary mapping
+        joints to configuration values.
+        """
+        joint_cfg = {}
+        if cfg is None:
+            return joint_cfg
+        if isinstance(cfg, dict):
+            for joint in cfg:
+                if isinstance(joint, six.string_types):
+                    joint_cfg[self._joint_map[joint]] = cfg[joint]
+                elif isinstance(joint, Joint):
+                    joint_cfg[joint] = cfg[joint]
+        elif isinstance(cfg, (list, tuple, np.ndarray)):
+            if len(cfg) != len(self.actuated_joints):
+                raise ValueError('Cfg must have same length as actuated joints '
+                                 'if specified as a numerical array')
+            for joint, value in zip(self.actuated_joints, cfg):
+                joint_cfg[joint] = value
+        else:
+            raise TypeError('Invalid type for config')
+        return joint_cfg
 
     @classmethod
     def _from_xml(cls, node, path):

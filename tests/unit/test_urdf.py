@@ -27,6 +27,40 @@ def test_urdfpy(tmpdir):
         assert isinstance(fk[l], np.ndarray)
         assert fk[l].shape == (4,4)
 
+    fk = u.link_fk({'shoulder_pan_joint': 2.0})
+    assert isinstance(fk, dict)
+    for l in fk:
+        assert isinstance(l, Link)
+        assert isinstance(fk[l], np.ndarray)
+        assert fk[l].shape == (4,4)
+
+    fk = u.link_fk(np.zeros(6))
+    assert isinstance(fk, dict)
+    for l in fk:
+        assert isinstance(l, Link)
+        assert isinstance(fk[l], np.ndarray)
+        assert fk[l].shape == (4,4)
+
+    fk = u.link_fk(np.zeros(6), link='upper_arm_link')
+    assert isinstance(fk, np.ndarray)
+    assert fk.shape == (4,4)
+
+    fk = u.link_fk(links=['shoulder_link', 'upper_arm_link'])
+    assert isinstance(fk, dict)
+    assert len(fk) == 2
+    for l in fk:
+        assert isinstance(l, Link)
+        assert isinstance(fk[l], np.ndarray)
+        assert fk[l].shape == (4,4)
+
+    fk = u.link_fk(links=list(u.links)[:2])
+    assert isinstance(fk, dict)
+    assert len(fk) == 2
+    for l in fk:
+        assert isinstance(l, Link)
+        assert isinstance(fk[l], np.ndarray)
+        assert fk[l].shape == (4,4)
+
     # Test save
     u.save(outfn)
 
