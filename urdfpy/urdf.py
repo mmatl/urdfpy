@@ -3010,7 +3010,8 @@ class URDF(URDFType):
 
     def _to_xml(self, parent, path):
         node = self._unparse(path)
-        extra_tree = ET.fromstring(self.other_xml)
-        for child in extra_tree:
-            node.append(child)
+        if self.other_xml:
+            extra_tree = ET.fromstring(self.other_xml)
+            for child in extra_tree:
+                node.append(child)
         return node
