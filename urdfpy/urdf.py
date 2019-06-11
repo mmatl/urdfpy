@@ -2799,6 +2799,55 @@ class URDF(URDFType):
         tree.write(file_obj, pretty_print=True,
                    xml_declaration=True, encoding='utf-8')
 
+    def join(self, other, link, origin=None, name=None):
+        """Join another URDF to this one by rigidly fixturing the two at a link.
+
+        Parameters
+        ----------
+        other : :class:.`URDF`
+            Another URDF to fuze to this one.
+        link : :class:`.Link` or str
+            The link of this URDF to attach the other URDF to.
+        origin : (4,4) float, optional
+            The location in this URDF's link frame to attach the base link of the other
+            URDF at.
+        name : str, optional
+            A name for the new URDF.
+
+        Returns
+        -------
+        :class:`.URDF`
+            The new URDF.
+        """
+        # Validate
+        link_names = set(self.link_map.keys())
+        other_link_names = set(other.link_map.keys())
+        if len(link_names.intersection(other_link_names)) > 0:
+            raise ValueError('Cannot merge two URDFs with shared link names')
+        joint_names = set(self.joint_map.keys())
+        other_joint_names = set(other.joint_map.keys())
+        if len(joint_names.intersection(other_joint_names)) > 0:
+            raise ValueError('Cannot merge two URDFs with shared joint names')
+
+        links = self.links + other.links
+        joints = self.joints + other.joints
+        transmissions = self.transmissions + other.transmissions
+        materials = self.materials + other.materials
+        if name is None:
+            name = '{}_join_{}'.format(self.name, other.name)
+
+        # Create joint that links the two rigidly
+        joints.append(Joint(
+            name='{}_join_{}_joint'.format(self.name, other.name),
+            joint_type='fixed',
+            parent=link if isinstance(link, str) else link.name,
+            child=other.base_link.name,
+            origin=origin
+        ))
+
+        return URDF(name=name, links=links, joints=joints, transmissions=transmissions,
+                    materials=materials)
+
     def _merge_materials(self):
         """Merge the top-level material set with the link materials.
         """
