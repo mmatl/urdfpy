@@ -323,6 +323,24 @@ class Box(URDFType):
             self._meshes = [trimesh.creation.box(extents=self.size)]
         return self._meshes
 
+    def copy(self, prefix=''):
+        """Create a deep copy with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all names.
+
+        Returns
+        -------
+        :class:`.Box`
+            A deep copy.
+        """
+        b = Box(
+            size=self.size.copy(),
+        )
+        b._meshes = [m.copy() for m in self._meshes]
+        return b
 
 class Cylinder(URDFType):
     """A cylinder whose center is at the local origin.
@@ -379,6 +397,26 @@ class Cylinder(URDFType):
             )]
         return self._mesh
 
+    def copy(self, prefix=''):
+        """Create a deep copy with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all names.
+
+        Returns
+        -------
+        :class:`.Cylinder`
+            A deep copy.
+        """
+        c = Cylinder(
+            radius=self.radius,
+            length=self.length,
+        )
+        c._meshes = [m.copy() for m in self._meshes]
+        return c
+
 
 class Sphere(URDFType):
     """A sphere whose center is at the local origin.
@@ -417,6 +455,24 @@ class Sphere(URDFType):
             self._meshes = [trimesh.creation.icosphere(radius=self.radius)]
         return self._meshes
 
+    def copy(self, prefix=''):
+        """Create a deep copy with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all names.
+
+        Returns
+        -------
+        :class:`.Sphere`
+            A deep copy.
+        """
+        s = Sphere(
+            radius=self.radius,
+        )
+        s._meshes = [m.copy() for m in self._meshes]
+        return s
 
 class Mesh(URDFType):
     """A triangular mesh object.
@@ -527,6 +583,25 @@ class Mesh(URDFType):
         node = self._unparse(path)
         return node
 
+    def copy(self, prefix=''):
+        """Create a deep copy with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all names.
+
+        Returns
+        -------
+        :class:`.Sphere`
+            A deep copy.
+        """
+        m = Mesh(
+            filename=self.filename,
+            scale=(self.scale.copy() if self.scale is not None else None),
+            meshes=[m.copy() for m in self.meshes],
+        )
+        return m
 
 class Geometry(URDFType):
     """A wrapper for all geometry types.
@@ -633,6 +708,27 @@ class Geometry(URDFType):
         """
         return self.geometry.meshes
 
+    def copy(self, prefix=''):
+        """Create a deep copy with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all names.
+
+        Returns
+        -------
+        :class:`.Geometry`
+            A deep copy.
+        """
+        v = Geometry(
+            box=(self.box.copy(prefix=prefix) if self.box else None),
+            cylinder=(self.cylinder.copy(prefix=prefix) if self.cylinder else None),
+            sphere=(self.sphere.copy(prefix=prefix) if self.sphere else None),
+            mesh=(self.mesh.copy(prefix=prefix) if self.mesh else None),
+        )
+        return v
+
 
 class Texture(URDFType):
     """An image-based texture.
@@ -702,6 +798,24 @@ class Texture(URDFType):
 
         return self._unparse(path)
 
+    def copy(self, prefix=''):
+        """Create a deep copy with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all names.
+
+        Returns
+        -------
+        :class:`.Texture`
+            A deep copy.
+        """
+        v = Texture(
+            filename=self.filename,
+            image=self.image.copy()
+        )
+        return v
 
 class Material(URDFType):
     """A material for some geometry.
@@ -799,6 +913,24 @@ class Material(URDFType):
             node.attrib['name'] = self.name
         return node
 
+    def copy(self, prefix=''):
+        """Create a deep copy of the material with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all joint and link names.
+
+        Returns
+        -------
+        :class:`.Material`
+            A deep copy of the material.
+        """
+        return Material(
+            name='{}{}'.format(prefix, self.name),
+            color=self.color,
+            texture=self.texture
+        )
 
 class Collision(URDFType):
     """Collision properties of a link.
@@ -871,6 +1003,25 @@ class Collision(URDFType):
         node = self._unparse(path)
         node.append(unparse_origin(self.origin))
         return node
+
+    def copy(self, prefix=''):
+        """Create a deep copy of the visual with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all joint and link names.
+
+        Returns
+        -------
+        :class:`.Visual`
+            A deep copy of the visual.
+        """
+        return Collision(
+            name='{}{}'.format(prefix, self.name),
+            origin=self.origin.copy(),
+            geometry=self.geometry.copy(prefix=prefix),
+        )
 
 
 class Visual(URDFType):
@@ -961,6 +1112,26 @@ class Visual(URDFType):
         node.append(unparse_origin(self.origin))
         return node
 
+    def copy(self, prefix=''):
+        """Create a deep copy of the visual with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all joint and link names.
+
+        Returns
+        -------
+        :class:`.Visual`
+            A deep copy of the visual.
+        """
+        return Visual(
+            geometry=self.geometry.copy(prefix=prefix),
+            name='{}{}'.format(prefix, self.name),
+            origin=self.origin,
+            material=self.material.copy(prefix=prefix),
+        )
+
 
 class Inertial(URDFType):
     """The inertial properties of a link.
@@ -1049,6 +1220,25 @@ class Inertial(URDFType):
         node.append(inertia)
         return node
 
+    def copy(self, prefix=''):
+        """Create a deep copy of the visual with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all joint and link names.
+
+        Returns
+        -------
+        :class:`.Inertial`
+            A deep copy of the visual.
+        """
+        return Inertial(
+            mass=self.mass,
+            inertia=self.inertia.copy(),
+            origin=self.origin.copy(),
+        )
+
 ###############################################################################
 # Joint types
 ###############################################################################
@@ -1100,6 +1290,24 @@ class JointCalibration(URDFType):
             value = float(value)
         self._falling = value
 
+    def copy(self, prefix=''):
+        """Create a deep copy of the visual with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all joint and link names.
+
+        Returns
+        -------
+        :class:`.JointCalibration`
+            A deep copy of the visual.
+        """
+        return JointCalibration(
+            rising=self.rising,
+            falling=self.falling,
+        )
+
 
 class JointDynamics(URDFType):
     """The dynamic properties of the joint.
@@ -1147,6 +1355,23 @@ class JointDynamics(URDFType):
             value = float(value)
         self._friction = value
 
+    def copy(self, prefix=''):
+        """Create a deep copy of the visual with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all joint and link names.
+
+        Returns
+        -------
+        :class:`.JointDynamics`
+            A deep copy of the visual.
+        """
+        return JointDynamics(
+            damping=self.damping,
+            friction=self.friction,
+        )
 
 class JointLimit(URDFType):
     """The limits of the joint.
@@ -1222,6 +1447,25 @@ class JointLimit(URDFType):
             value = float(value)
         self._upper = value
 
+    def copy(self, prefix=''):
+        """Create a deep copy of the visual with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all joint and link names.
+
+        Returns
+        -------
+        :class:`.JointLimit`
+            A deep copy of the visual.
+        """
+        return JointLimit(
+            effort=self.effort,
+            velocity=self.velocity,
+            lower=self.lower,
+            upper=self.upper,
+        )
 
 class JointMimic(URDFType):
     """A mimicry tag for a joint, which forces its configuration to
@@ -1288,6 +1532,25 @@ class JointMimic(URDFType):
         else:
             value = 0.0
         self._offset = value
+
+    def copy(self, prefix=''):
+        """Create a deep copy of the joint mimic with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all joint and link names.
+
+        Returns
+        -------
+        :class:`.JointMimic`
+            A deep copy of the joint mimic.
+        """
+        return JointMimic(
+            joint='{}{}'.format(prefix, self.joint),
+            multipler=self.multiplier,
+            offset=self.offset
+        )
 
 
 class SafetyController(URDFType):
@@ -1374,6 +1637,26 @@ class SafetyController(URDFType):
     @k_velocity.setter
     def k_velocity(self, value):
         self._k_velocity = float(value)
+
+    def copy(self, prefix=''):
+        """Create a deep copy of the visual with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all joint and link names.
+
+        Returns
+        -------
+        :class:`.SafetyController`
+            A deep copy of the visual.
+        """
+        return SafetyController(
+            k_velocity=self.k_velocity,
+            k_position=self.k_position,
+            soft_lower_limit=self.soft_lower_limit,
+            soft_upper_limit=self.soft_upper_limit,
+        )
 
 ###############################################################################
 # Transmission types
@@ -1468,6 +1751,24 @@ class Actuator(URDFType):
                 node.append(h)
         return node
 
+    def copy(self, prefix=''):
+        """Create a deep copy of the visual with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all joint and link names.
+
+        Returns
+        -------
+        :class:`.Actuator`
+            A deep copy of the visual.
+        """
+        return Actuator(
+            name='{}{}'.format(prefix, self.name),
+            mechanicalReduction=self.mechanicalReduction,
+            hardwareInterfaces=self.hardwareInterfaces.copy(),
+        )
 
 class TransmissionJoint(URDFType):
     """A transmission joint specification.
@@ -1531,6 +1832,24 @@ class TransmissionJoint(URDFType):
                 h.text = hi
                 node.append(h)
         return node
+
+    def copy(self, prefix=''):
+        """Create a deep copy with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all names.
+
+        Returns
+        -------
+        :class:`.TransmissionJoint`
+            A deep copy.
+        """
+        return TransmissionJoint(
+            name='{}{}'.format(prefix, self.name),
+            hardwareInterfaces=self.hardwareInterfaces.copy(),
+        )
 
 ###############################################################################
 # Top-level types
@@ -1638,6 +1957,26 @@ class Transmission(URDFType):
         ttype.text = self.trans_type
         node.append(ttype)
         return node
+
+    def copy(self, prefix=''):
+        """Create a deep copy with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all names.
+
+        Returns
+        -------
+        :class:`.Transmission`
+            A deep copy.
+        """
+        return Transmission(
+            name='{}{}'.format(prefix, self.name),
+            trans_type=self.trans_type,
+            joints=[j.copy(prefix) for j in self.joints],
+            actuators=[a.copy(prefix) for a in self.actuators],
+        )
 
 
 class Joint(URDFType):
@@ -1974,6 +2313,35 @@ class Joint(URDFType):
         node.attrib['type'] = self.joint_type
         return node
 
+    def copy(self, prefix=''):
+        """Create a deep copy of the joint with the prefix applied to all names.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all joint and link names.
+
+        Returns
+        -------
+        :class:`.Joint`
+            A deep copy of the joint.
+        """
+        cpy = Joint(
+            name='{}{}'.format(prefix, self.name),
+            joint_type=self.joint_type,
+            parent='{}{}'.format(prefix, self.parent),
+            child='{}{}'.format(prefix, self.child),
+            axis=self.axis.copy(),
+            origin=self.origin.copy(),
+            limit=(self.limit.copy(prefix) if self.limit else None),
+            dynamics=(self.dynamics.copy(prefix) if self.dynamics else None),
+            safety_controller=(self.safety_controller.copy(prefix) if
+                               self.safety_controller else None),
+            calibration=(self.calibration.copy(prefix) if self.calibration else None),
+            mimic=(self.mimic.copy(prefix=prefix) if self.mimic else None)
+        )
+        return cpy
+
 
 class Link(URDFType):
     """A link of a rigid object.
@@ -2006,7 +2374,6 @@ class Link(URDFType):
         self.visuals = visuals
         self.collisions = collisions
 
-        self._visual_meshes = None
         self._collision_mesh = None
 
     @property
@@ -2028,7 +2395,7 @@ class Link(URDFType):
     @inertial.setter
     def inertial(self, value):
         if value is not None and not isinstance(value, Inertial):
-            raise TypeError('Expected Intertial object')
+            raise TypeError('Expected Inertial object')
         self._inertial = value
 
     @property
@@ -2090,6 +2457,27 @@ class Link(URDFType):
             self._collision_mesh = (meshes[0] + meshes[1:])
         return self._collision_mesh
 
+    def copy(self, prefix=''):
+        """Create a deep copy of the link.
+
+        Parameters
+        ----------
+        prefix : str
+            A prefix to apply to all joint and link names.
+
+        Returns
+        -------
+        link : :class:`.Link`
+            A deep copy of the Link.
+        """
+        cpy = Link(
+            name='{}{}'.format(prefix, self.name),
+            inertial=(self.inertial.copy(prefix) if self.inertial else None),
+            visuals=[v.copy(prefix=prefix) for v in self.visuals],
+            collisions=[v.copy(prefix=prefix) for v in self.collisions],
+        )
+        cpy._collision_mesh = self._collision_mesh
+        return cpy
 
 class URDF(URDFType):
     """The top-level URDF specification.
@@ -2773,6 +3161,30 @@ class URDF(URDFType):
             scene.add(mesh, pose=pose)
         pyrender.Viewer(scene, use_raymond_lighting=True)
 
+    def copy(self, name=None, prefix=''):
+        """Make a deep copy of the URDF.
+
+        Parameters
+        ----------
+        name : str, optional
+            A name for the new URDF. If not specified, ``self.name`` is used.
+        prefix : str, optional
+            A prefix to apply to all names except for the base URDF name.
+
+        Returns
+        -------
+        copy : :class:`.URDF`
+            The copied URDF.
+        """
+        return URDF(
+            name = (name if name else self.name),
+            links=[v.copy(prefix) for v in self.links],
+            joints=[v.copy(prefix) for v in self.joints],
+            transmissions=[v.copy(prefix) for v in self.transmissions],
+            materials=[v.copy(prefix) for v in self.materials],
+            other_xml=self.other_xml
+        )
+
     def save(self, file_obj):
         """Save this URDF to a file.
 
@@ -2799,7 +3211,7 @@ class URDF(URDFType):
         tree.write(file_obj, pretty_print=True,
                    xml_declaration=True, encoding='utf-8')
 
-    def join(self, other, link, origin=None, name=None):
+    def join(self, other, link, origin=None, name=None, prefix=''):
         """Join another URDF to this one by rigidly fixturing the two at a link.
 
         Parameters
@@ -2813,32 +3225,40 @@ class URDF(URDFType):
             URDF at.
         name : str, optional
             A name for the new URDF.
+        prefix : str, optional
+            If specified, all joints and links from the (other) mesh will be pre-fixed
+            with this value to avoid name clashes.
 
         Returns
         -------
         :class:`.URDF`
             The new URDF.
         """
+        myself = self.copy()
+        other = other.copy(prefix=prefix)
+
         # Validate
-        link_names = set(self.link_map.keys())
+        link_names = set(myself.link_map.keys())
         other_link_names = set(other.link_map.keys())
         if len(link_names.intersection(other_link_names)) > 0:
             raise ValueError('Cannot merge two URDFs with shared link names')
-        joint_names = set(self.joint_map.keys())
+
+        joint_names = set(myself.joint_map.keys())
         other_joint_names = set(other.joint_map.keys())
         if len(joint_names.intersection(other_joint_names)) > 0:
             raise ValueError('Cannot merge two URDFs with shared joint names')
 
-        links = self.links + other.links
-        joints = self.joints + other.joints
-        transmissions = self.transmissions + other.transmissions
-        materials = self.materials + other.materials
+        links = myself.links + other.links
+        joints = myself.joints + other.joints
+        transmissions = myself.transmissions + other.transmissions
+        materials = myself.materials + other.materials
+
         if name is None:
-            name = '{}_join_{}'.format(self.name, other.name)
+            name = self.name
 
         # Create joint that links the two rigidly
         joints.append(Joint(
-            name='{}_join_{}_joint'.format(self.name, other.name),
+            name='{}_join_{}{}_joint'.format(self.name, prefix, other.name),
             joint_type='fixed',
             parent=link if isinstance(link, str) else link.name,
             child=other.base_link.name,

@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from urdfpy import URDF, Link, Joint, Transmission, Material
 
@@ -67,3 +68,12 @@ def test_urdfpy(tmpdir):
     nu = URDF.load(outfn)
     assert len(u.links) == len(nu.links)
     assert len(u.joints) == len(nu.joints)
+
+    # Test join
+    with pytest.raises(ValueError):
+        x = u.join(u, link=u.link_map['tool0'])
+    x = u.join(u, link=u.link_map['tool0'], name='copy', prefix='prefix')
+    assert isinstance(x, URDF)
+    assert x.name == 'copy'
+    assert len(x.joints) == 2 * len(u.joints) + 1
+    assert len(x.links) == 2 * len(u.links)
