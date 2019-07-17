@@ -10,6 +10,7 @@ requirements = [
     'pillow',           # For texture image loading
     'pycollada',        # COLLADA (.dae) mesh loading via trimesh
     'pyrender>=0.1.20', # For visualization
+    'scipy',            # For trimesh, annoyingly
     'six',              # Python 2/3 compatability
     'trimesh',          # Mesh geometry loading/creation/saving
 ]
