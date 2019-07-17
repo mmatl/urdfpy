@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+import trimesh
 
 from urdfpy import URDF, Link, Joint, Transmission, Material
 
@@ -61,6 +62,31 @@ def test_urdfpy(tmpdir):
         assert isinstance(l, Link)
         assert isinstance(fk[l], np.ndarray)
         assert fk[l].shape == (4,4)
+
+    cfg={j.name: 0.5 for j in u.actuated_joints}
+    for _ in range(1000):
+        fk = u.collision_trimesh_fk(cfg=cfg)
+        for key in fk:
+            assert isinstance(fk[key], np.ndarray)
+            assert fk[key].shape == (4,4)
+
+    cfg = {j.name: np.random.uniform(size=1000) for j in u.actuated_joints}
+    fk = u.link_fk_batch(cfgs=cfg)
+    for key in fk:
+        assert isinstance(fk[key], np.ndarray)
+        assert fk[key].shape == (1000,4,4)
+
+    cfg={j.name: 0.5 for j in u.actuated_joints}
+    for _ in range(1000):
+        fk = u.collision_trimesh_fk(cfg=cfg)
+        for key in fk:
+            assert isinstance(key, trimesh.Trimesh)
+            assert fk[key].shape == (4,4)
+    cfg = {j.name: np.random.uniform(size=1000) for j in u.actuated_joints}
+    fk = u.collision_trimesh_fk_batch(cfgs=cfg)
+    for key in fk:
+        assert isinstance(key, trimesh.Trimesh)
+        assert fk[key].shape == (1000,4,4)
 
     # Test save
     u.save(outfn)

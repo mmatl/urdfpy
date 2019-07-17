@@ -2284,6 +2284,51 @@ class Joint(URDFType):
         else:
             raise ValueError('Invalid configuration')
 
+    def get_child_poses(self, cfg, n_cfgs):
+        """Computes the child pose relative to a parent pose for a given set of 
+        configuration values.
+
+        Parameters
+        ----------
+        cfg : (n,) float or None
+            The configuration values for this joint. They are interpreted
+            based on the joint type as follows:
+
+            - ``fixed`` - not used.
+            - ``prismatic`` - a translation along the axis in meters.
+            - ``revolute`` - a rotation about the axis in radians.
+            - ``continuous`` - a rotation about the axis in radians.
+            - ``planar`` - Not implemented.
+            - ``floating`` - Not implemented.
+
+            If ``cfg`` is ``None``, then this just returns the joint pose.
+
+        Returns
+        -------
+        poses : (n,4,4) float
+            The poses of the child relative to the parent.
+        """
+        if cfg is None:
+            return np.tile(self.origin, (n_cfgs, 1, 1))
+        elif self.joint_type == 'fixed':
+            return np.tile(self.origin, (n_cfgs, 1, 1))
+        elif self.joint_type in ['revolute', 'continuous']:
+            if cfg is None:
+                cfg = np.zeros(n_cfgs)
+            return np.matmul(self.origin, self._rotation_matrices(cfg, self.axis))
+        elif self.joint_type == 'prismatic':
+            if cfg is None:
+                cfg = np.zeros(n_cfgs)
+            translation = np.tile(np.eye(4), (n_cfgs, 1, 1))
+            translation[:,:3,3] = self.axis * cfg[:,np.newaxis]
+            return np.matmul(self.origin, translation)
+        elif self.joint_type == 'planar':
+            raise NotImplementedError()
+        elif self.joint_type == 'floating':
+            raise NotImplementedError()
+        else:
+            raise ValueError('Invalid configuration')
+
     @classmethod
     def _from_xml(cls, node, path):
         kwargs = cls._parse(node, path)
@@ -2312,6 +2357,39 @@ class Joint(URDFType):
         node.append(unparse_origin(self.origin))
         node.attrib['type'] = self.joint_type
         return node
+
+    def _rotation_matrices(self, angles, axis):
+        """Compute rotation matrices from angle/axis representations.
+
+        Parameters
+        ----------
+        angles : (n,) float
+            The angles.
+        axis : (3,) float
+            The axis.
+
+        Returns
+        -------
+        rots : (n,4,4)
+            The rotation matrices
+        """
+        axis = axis / np.linalg.norm(axis)
+        sina = np.sin(angles)
+        cosa = np.cos(angles)
+        M = np.tile(np.eye(4), (len(angles), 1, 1))
+        M[:,0,0] = cosa
+        M[:,1,1] = cosa
+        M[:,2,2] = cosa
+        M[:,:3,:3] += (
+            np.tile(np.outer(axis, axis), (len(angles), 1, 1)) *
+            (1.0 - cosa)[:, np.newaxis, np.newaxis]
+        )
+        M[:,:3,:3] += np.tile(np.array([
+            [0.0, -axis[2], axis[1]],
+            [axis[2], 0.0, -axis[0]],
+            [-axis[1], axis[0], 0.0]]
+        ), (len(angles), 1, 1)) * sina[:, np.newaxis, np.newaxis]
+        return M
 
     def copy(self, prefix=''):
         """Create a deep copy of the joint with the prefix applied to all names.
@@ -2852,6 +2930,89 @@ class URDF(URDFType):
             return {ell.name: fk[ell] for ell in fk}
         return fk
 
+    def link_fk_batch(self, cfgs=None, link=None, links=None, use_names=False):
+        """Computes the poses of the URDF's links via forward kinematics in a batch.
+
+        Parameters
+        ----------
+        cfgs : dict, list of dict, or (n,m), float
+            One of the following: (A) a map from joints or joint names to vectors
+            of joint configuration values, (B) a list of maps from joints or joint names
+            to single configuration values, or (C) a list of ``n`` configuration vectors,
+            each of which has a vector with an entry for each actuated joint.
+        link : str or :class:`.Link`
+            A single link or link name to return a pose for.
+        links : list of str or list of :class:`.Link`
+            The links or names of links to perform forward kinematics on.
+            Only these links will be in the returned map. If neither
+            link nor links are specified all links are returned.
+        use_names : bool
+            If True, the returned dictionary will have keys that are string
+            link names rather than the links themselves.
+
+        Returns
+        -------
+        fk : dict or (n,4,4) float
+            A map from links to a (n,4,4) vector of homogenous transform matrices that
+            position the links relative to the base link's frame, or a single
+            nx4x4 matrix if ``link`` is specified.
+        """
+        joint_cfgs, n_cfgs = self._process_cfgs(cfgs)
+
+        # Process link set
+        if link is not None:
+            if isinstance(link, six.string_types):
+                link_set.add(self._link_map[link])
+            elif isinstance(link, Link):
+                link_set.add(link)
+        elif links is not None:
+            for lnk in links:
+                if isinstance(lnk, six.string_types):
+                    link_set.add(self._link_map[lnk])
+                elif isinstance(lnk, Link):
+                    link_set.add(lnk)
+                else:
+                    raise TypeError('Got object of type {} in links list'
+                                    .format(type(lnk)))
+        else:
+            link_set = self.links
+
+        # Compute FK mapping each link to a vector of matrices, one matrix per cfg
+        fk = {}
+        for lnk in self._reverse_topo:
+            if lnk not in link_set:
+                continue
+            poses = np.tile(np.eye(4), (n_cfgs, 1, 1))
+            path = self._paths_to_base[lnk]
+            for i in range(len(path) - 1):
+                child = path[i]
+                parent = path[i + 1]
+                joint = self._G.get_edge_data(child, parent)['joint']
+
+                cfg_vals = None
+                if joint.mimic is not None:
+                    mimic_joint = self._joint_map[joint.mimic.joint]
+                    if mimic_joint in joint_cfgs:
+                        cfg_vals = joint_cfgs[mimic_joint]
+                        cfg_vals = joint.mimic.multiplier * cfg_vals + joint.mimic.offset
+                elif joint in joint_cfgs:
+                    cfg_vals = joint_cfgs[joint]
+                poses = np.matmul(joint.get_child_poses(cfg_vals, n_cfgs), poses)
+
+                if parent in fk:
+                    poses = np.matmul(fk[parent], poses)
+                    break
+            fk[lnk] = poses
+
+        if link:
+            if isinstance(link, six.string_types):
+                return fk[self._link_map[link]]
+            else:
+                return fk[link]
+        if use_names:
+            return {ell.name: fk[ell] for ell in fk}
+        return fk
+
     def visual_geometry_fk(self, cfg=None, links=None):
         """Computes the poses of the URDF's visual geometries using fk.
 
@@ -2881,6 +3042,36 @@ class URDF(URDFType):
         for link in lfk:
             for visual in link.visuals:
                 fk[visual.geometry] = lfk[link].dot(visual.origin)
+        return fk
+
+    def visual_geometry_fk_batch(self, cfgs=None, links=None):
+        """Computes the poses of the URDF's visual geometries using fk.
+
+        Parameters
+        ----------
+        cfgs : dict, list of dict, or (n,m), float
+            One of the following: (A) a map from joints or joint names to vectors
+            of joint configuration values, (B) a list of maps from joints or joint names
+            to single configuration values, or (C) a list of ``n`` configuration vectors,
+            each of which has a vector with an entry for each actuated joint.
+        links : list of str or list of :class:`.Link`
+            The links or names of links to perform forward kinematics on.
+            Only geometries from these links will be in the returned map.
+            If not specified, all links are returned.
+
+        Returns
+        -------
+        fk : dict
+            A map from :class:`Geometry` objects that are part of the visual
+            elements of the specified links to the 4x4 homogenous transform
+            matrices that position them relative to the base link's frame.
+        """
+        lfk = self.link_fk_batch(cfgs=cfgs, links=links)
+
+        fk = {}
+        for link in lfk:
+            for visual in link.visuals:
+                fk[visual.geometry] = np.matmul(lfk[link], visual.origin)
         return fk
 
     def visual_trimesh_fk(self, cfg=None, links=None):
@@ -2922,6 +3113,44 @@ class URDF(URDFType):
                     fk[mesh] = pose
         return fk
 
+    def visual_trimesh_fk_batch(self, cfgs=None, links=None):
+        """Computes the poses of the URDF's visual trimeshes using fk.
+
+        Parameters
+        ----------
+        cfgs : dict, list of dict, or (n,m), float
+            One of the following: (A) a map from joints or joint names to vectors
+            of joint configuration values, (B) a list of maps from joints or joint names
+            to single configuration values, or (C) a list of ``n`` configuration vectors,
+            each of which has a vector with an entry for each actuated joint.
+        links : list of str or list of :class:`.Link`
+            The links or names of links to perform forward kinematics on.
+            Only trimeshes from these links will be in the returned map.
+            If not specified, all links are returned.
+
+        Returns
+        -------
+        fk : dict
+            A map from :class:`~trimesh.base.Trimesh` objects that are
+            part of the visual geometry of the specified links to the
+            4x4 homogenous transform matrices that position them relative
+            to the base link's frame.
+        """
+        lfk = self.link_fk_batch(cfgs=cfgs, links=links)
+
+        fk = {}
+        for link in lfk:
+            for visual in link.visuals:
+                for mesh in visual.geometry.meshes:
+                    poses = np.matmul(lfk[link], visual.origin)
+                    if visual.geometry.mesh is not None:
+                        if visual.geometry.mesh.scale is not None:
+                            S = np.eye(4)
+                            S[:3,:3] = np.diag(visual.geometry.mesh.scale)
+                            poses = np.matmul(poses, S)
+                    fk[mesh] = poses
+        return fk
+
     def collision_geometry_fk(self, cfg=None, links=None):
         """Computes the poses of the URDF's collision geometries using fk.
 
@@ -2953,6 +3182,36 @@ class URDF(URDFType):
                 fk[collision] = lfk[link].dot(collision.origin)
         return fk
 
+    def collision_geometry_fk_batch(self, cfgs=None, links=None):
+        """Computes the poses of the URDF's collision geometries using fk.
+
+        Parameters
+        ----------
+        cfgs : dict, list of dict, or (n,m), float
+            One of the following: (A) a map from joints or joint names to vectors
+            of joint configuration values, (B) a list of maps from joints or joint names
+            to single configuration values, or (C) a list of ``n`` configuration vectors,
+            each of which has a vector with an entry for each actuated joint.
+        links : list of str or list of :class:`.Link`
+            The links or names of links to perform forward kinematics on.
+            Only geometries from these links will be in the returned map.
+            If not specified, all links are returned.
+
+        Returns
+        -------
+        fk : dict
+            A map from :class:`Geometry` objects that are part of the collision
+            elements of the specified links to the 4x4 homogenous transform
+            matrices that position them relative to the base link's frame.
+        """
+        lfk = self.link_fk_batch(cfgs=cfgs, links=links)
+
+        fk = {}
+        for link in lfk:
+            for collision in link.collisions:
+                fk[collision] = np.matmul(lfk[link], collision.origin)
+        return fk
+
     def collision_trimesh_fk(self, cfg=None, links=None):
         """Computes the poses of the URDF's collision trimeshes using fk.
 
@@ -2981,8 +3240,43 @@ class URDF(URDFType):
 
         fk = {}
         for link in lfk:
-            if link.collision_mesh is not None:
-                fk[link.collision_mesh] = lfk[link]
+            pose = lfk[link]
+            cm = link.collision_mesh
+            if cm is not None:
+                fk[cm] = pose
+        return fk
+
+    def collision_trimesh_fk_batch(self, cfgs=None, links=None):
+        """Computes the poses of the URDF's collision trimeshes using fk.
+
+        Parameters
+        ----------
+        cfgs : dict, list of dict, or (n,m), float
+            One of the following: (A) a map from joints or joint names to vectors
+            of joint configuration values, (B) a list of maps from joints or joint names
+            to single configuration values, or (C) a list of ``n`` configuration vectors,
+            each of which has a vector with an entry for each actuated joint.
+        links : list of str or list of :class:`.Link`
+            The links or names of links to perform forward kinematics on.
+            Only trimeshes from these links will be in the returned map.
+            If not specified, all links are returned.
+
+        Returns
+        -------
+        fk : dict
+            A map from :class:`~trimesh.base.Trimesh` objects that are
+            part of the collision geometry of the specified links to the
+            4x4 homogenous transform matrices that position them relative
+            to the base link's frame.
+        """
+        lfk = self.link_fk_batch(cfgs=cfgs, links=links)
+
+        fk = {}
+        for link in lfk:
+            poses = lfk[link]
+            cm = link.collision_mesh
+            if cm is not None:
+                fk[cm] = poses
         return fk
 
     def animate(self, cfg_trajectory=None, loop_time=3.0, use_collision=False):
@@ -3462,6 +3756,48 @@ class URDF(URDFType):
         else:
             raise TypeError('Invalid type for config')
         return joint_cfg
+
+    def _process_cfgs(self, cfgs):
+        """Process a list of joint configurations into a dictionary mapping joints to
+        configuration values.
+
+        This should result in a dict mapping each joint to a list of cfg values, one
+        per joint.
+        """
+        joint_cfg = {j : [] for j in self.actuated_joints}
+        n_cfgs = None
+        if isinstance(cfgs, dict):
+            for joint in cfgs:
+                if isinstance(joint, six.string_types):
+                    joint_cfg[self._joint_map[joint]] = cfgs[joint]
+                else:
+                    joint_cfg[joint] = cfgs[joint]
+                if n_cfgs is None:
+                    n_cfgs = len(cfgs[joint])
+        elif isinstance(cfgs, (list, tuple, np.ndarray)):
+            n_cfgs = len(cfgs)
+            if isinstance(cfgs[0], dict):
+                for cfg in cfgs:
+                    for joint in cfg:
+                        if isinstance(joint, six.string_types):
+                            joint_cfg[self._joint_map[joint]].append(cfg[joint])
+                        else:
+                            joint_cfg[joint].append(cfg[joint])
+            elif isinstance(cfgs[0], (list, tuple, np.ndarray)):
+                for i, j in enumerate(self.actuated_joints):
+                    joint_cfg[j] = cfgs[i]
+            else:
+                raise ValueError('Incorrectly formatted config array')
+        else:
+            raise ValueError('Incorrectly formatted config array')
+
+        for j in joint_cfg:
+            if len(joint_cfg[j]) == 0:
+                joint_cfg[j] = None
+            elif len(joint_cfg[j]) != n_cfgs:
+                raise ValueError('Inconsistent number of configurations for joints')
+
+        return joint_cfg, n_cfgs
 
     @classmethod
     def _from_xml(cls, node, path):
