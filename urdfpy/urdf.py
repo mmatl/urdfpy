@@ -2792,6 +2792,35 @@ class URDF(URDFType):
         """
         return [j.name for j in self._actuated_joints]
 
+    def cfg_to_vector(self, cfg):
+        """Convert a configuration dictionary into a configuration vector.
+
+        Parameters
+        ----------
+        cfg : dict or None
+            The configuration value.
+
+        Returns
+        -------
+        vec : (n,) float
+            The configuration vector, or None if no actuated joints present.
+        """
+        if cfg is None:
+            if len(self.actuated_joints) > 0:
+                return np.zeros(len(self.actuated_joints))
+            else:
+                return None
+        elif isinstance(cfg, (list, tuple, np.ndarray)):
+            return np.asanyarray(cfg)
+        elif isinstance(cfg, dict):
+            vec = np.zeros(len(self.actuated_joints))
+            for i, jn in enumerate(self.actuated_joint_names):
+                if jn in cfg:
+                    vec[i] = cfg[jn]
+            return vec
+        else:
+            raise ValueError('Invalid configuration: {}'.format(cfg))
+
     @property
     def base_link(self):
         """:class:`.Link`: The base link for the URDF.
@@ -2960,6 +2989,7 @@ class URDF(URDFType):
         joint_cfgs, n_cfgs = self._process_cfgs(cfgs)
 
         # Process link set
+        link_set = set()
         if link is not None:
             if isinstance(link, six.string_types):
                 link_set.add(self._link_map[link])
@@ -3783,11 +3813,12 @@ class URDF(URDFType):
                             joint_cfg[self._joint_map[joint]].append(cfg[joint])
                         else:
                             joint_cfg[joint].append(cfg[joint])
-            elif isinstance(cfgs[0], (list, tuple, np.ndarray)):
-                for i, j in enumerate(self.actuated_joints):
-                    joint_cfg[j] = cfgs[i]
+            elif cfgs[0] is None:
+                pass
             else:
-                raise ValueError('Incorrectly formatted config array')
+                cfgs = np.asanyarray(cfgs)
+                for i, j in enumerate(self.actuated_joints):
+                    joint_cfg[j] = cfgs[:,i]
         else:
             raise ValueError('Incorrectly formatted config array')
 
