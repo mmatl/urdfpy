@@ -1129,7 +1129,7 @@ class Visual(URDFType):
             geometry=self.geometry.copy(prefix=prefix),
             name='{}{}'.format(prefix, self.name),
             origin=self.origin,
-            material=self.material.copy(prefix=prefix),
+            material=(self.material.copy(prefix=prefix) if self.material else None),
         )
 
 
