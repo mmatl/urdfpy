@@ -1548,7 +1548,7 @@ class JointMimic(URDFType):
         """
         return JointMimic(
             joint='{}{}'.format(prefix, self.joint),
-            multipler=self.multiplier,
+            multiplier=self.multiplier,
             offset=self.offset
         )
 
