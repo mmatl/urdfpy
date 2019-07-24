@@ -2869,7 +2869,7 @@ class URDF(URDFType):
                     limit[0] = joint.limit.lower
                 if joint.limit.upper is not None:
                     limit[1] = joint.limit.upper
-            limits.append([limit])
+            limits.append(limit)
         return np.array(limits)
 
     def link_fk(self, cfg=None, link=None, links=None, use_names=False):
