@@ -311,7 +311,7 @@ class Box(URDFType):
 
     @size.setter
     def size(self, value):
-        self._size = np.asanyarray(value).astype(np.float)
+        self._size = np.asanyarray(value).astype(np.float64)
         self._meshes = []
 
     @property
@@ -523,7 +523,7 @@ class Mesh(URDFType):
     @scale.setter
     def scale(self, value):
         if value is not None:
-            value = np.asanyarray(value).astype(np.float)
+            value = np.asanyarray(value).astype(np.float64)
         self._scale = value
 
     @property
@@ -891,7 +891,7 @@ class Material(URDFType):
         # Extract the color -- it's weirdly an attribute of a subelement
         color = node.find('color')
         if color is not None:
-            color = np.fromstring(color.attrib['rgba'], sep=' ')
+            color = np.fromstring(color.attrib['rgba'], sep=' ', dtype=np.float64)
         kwargs['color'] = color
 
         return Material(**kwargs)
@@ -1171,7 +1171,7 @@ class Inertial(URDFType):
 
     @inertia.setter
     def inertia(self, value):
-        value = np.asanyarray(value).astype(np.float)
+        value = np.asanyarray(value).astype(np.float64)
         if not np.allclose(value, value.T):
             raise ValueError('Inertia must be a symmetric matrix')
         self._inertia = value
@@ -1201,7 +1201,7 @@ class Inertial(URDFType):
             [xx, xy, xz],
             [xy, yy, yz],
             [xz, yz, zz]
-        ])
+        ], dtype=np.float64)
         return Inertial(mass=mass, inertia=inertia, origin=origin)
 
     def _to_xml(self, parent, path):
@@ -2104,9 +2104,9 @@ class Joint(URDFType):
     @axis.setter
     def axis(self, value):
         if value is None:
-            value = np.array([1.0, 0.0, 0.0])
+            value = np.array([1.0, 0.0, 0.0], dtype=np.float64)
         else:
-            value = np.asanyarray(value).astype(np.float)
+            value = np.asanyarray(value, dtype=np.float64)
             if value.shape != (3,):
                 raise ValueError('Invalid shape for axis, should be (3,)')
             value = value / np.linalg.norm(value)
@@ -2258,24 +2258,24 @@ class Joint(URDFType):
                 cfg = 0.0
             else:
                 cfg = float(cfg)
-            translation = np.eye(4)
+            translation = np.eye(4, dtype=np.float64)
             translation[:3,3] = self.axis * cfg
             return self.origin.dot(translation)
         elif self.joint_type == 'planar':
             if cfg is None:
-                cfg = np.zeros(2)
+                cfg = np.zeros(2, dtype=np.float64)
             else:
-                cfg = np.asanyarray(cfg)
+                cfg = np.asanyarray(cfg, dtype=np.float64)
             if cfg.shape != (2,):
                 raise ValueError(
                     '(2,) float configuration required for planar joints'
                 )
-            translation = np.eye(4)
+            translation = np.eye(4, dtype=np.float64)
             translation[:3,3] = self.origin[:3,:2].dot(cfg)
             return self.origin.dot(translation)
         elif self.joint_type == 'floating':
             if cfg is None:
-                cfg = np.zeros(6)
+                cfg = np.zeros(6, dtype=np.float64)
             else:
                 cfg = configure_origin(cfg)
             if cfg is None:
@@ -2927,7 +2927,7 @@ class URDF(URDFType):
         for lnk in self._reverse_topo:
             if lnk not in link_set:
                 continue
-            pose = np.eye(4)
+            pose = np.eye(4, dtype=np.float64)
             path = self._paths_to_base[lnk]
             for i in range(len(path) - 1):
                 child = path[i]
@@ -3012,7 +3012,7 @@ class URDF(URDFType):
         for lnk in self._reverse_topo:
             if lnk not in link_set:
                 continue
-            poses = np.tile(np.eye(4), (n_cfgs, 1, 1))
+            poses = np.tile(np.eye(4, dtype=np.float64), (n_cfgs, 1, 1))
             path = self._paths_to_base[lnk]
             for i in range(len(path) - 1):
                 child = path[i]
@@ -3137,7 +3137,7 @@ class URDF(URDFType):
                     pose = lfk[link].dot(visual.origin)
                     if visual.geometry.mesh is not None:
                         if visual.geometry.mesh.scale is not None:
-                            S = np.eye(4)
+                            S = np.eye(4, dtype=np.float64)
                             S[:3,:3] = np.diag(visual.geometry.mesh.scale)
                             pose = pose.dot(S)
                     fk[mesh] = pose
@@ -3175,7 +3175,7 @@ class URDF(URDFType):
                     poses = np.matmul(lfk[link], visual.origin)
                     if visual.geometry.mesh is not None:
                         if visual.geometry.mesh.scale is not None:
-                            S = np.eye(4)
+                            S = np.eye(4, dtype=np.float64)
                             S[:3,:3] = np.diag(visual.geometry.mesh.scale)
                             poses = np.matmul(poses, S)
                     fk[mesh] = poses
@@ -3372,14 +3372,14 @@ class URDF(URDFType):
         elif isinstance(ct, dict):
             if len(ct) > 0:
                 for k in ct:
-                    val = np.asanyarray(ct[k]).astype(np.float)
+                    val = np.asanyarray(ct[k]).astype(np.float64)
                     if traj_len is None:
                         traj_len = len(val)
                     elif traj_len != len(val):
                         raise ValueError('Trajectories must be same length')
                     ct_np[k] = val
         elif isinstance(ct, (list, tuple, np.ndarray)):
-            ct = np.asanyarray(ct)
+            ct = np.asanyarray(ct).astype(np.float64)
             if ct.ndim == 1:
                 ct = ct.reshape(-1, 1)
             if ct.ndim != 2 or ct.shape[1] != len(self.actuated_joints):
@@ -3816,7 +3816,7 @@ class URDF(URDFType):
             elif cfgs[0] is None:
                 pass
             else:
-                cfgs = np.asanyarray(cfgs)
+                cfgs = np.asanyarray(cfgs, dtype=np.float64)
                 for i, j in enumerate(self.actuated_joints):
                     joint_cfg[j] = cfgs[:,i]
         else:
