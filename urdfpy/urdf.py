@@ -1,3 +1,4 @@
+from collections import OrderedDict
 import copy
 import os
 import time
@@ -2923,7 +2924,7 @@ class URDF(URDFType):
             link_set = self.links
 
         # Compute forward kinematics in reverse topological order
-        fk = {}
+        fk = OrderedDict()
         for lnk in self._reverse_topo:
             if lnk not in link_set:
                 continue
@@ -3008,7 +3009,7 @@ class URDF(URDFType):
             link_set = self.links
 
         # Compute FK mapping each link to a vector of matrices, one matrix per cfg
-        fk = {}
+        fk = OrderedDict()
         for lnk in self._reverse_topo:
             if lnk not in link_set:
                 continue
@@ -3068,7 +3069,7 @@ class URDF(URDFType):
         """
         lfk = self.link_fk(cfg=cfg, links=links)
 
-        fk = {}
+        fk = OrderedDict()
         for link in lfk:
             for visual in link.visuals:
                 fk[visual.geometry] = lfk[link].dot(visual.origin)
@@ -3098,7 +3099,7 @@ class URDF(URDFType):
         """
         lfk = self.link_fk_batch(cfgs=cfgs, links=links)
 
-        fk = {}
+        fk = OrderedDict()
         for link in lfk:
             for visual in link.visuals:
                 fk[visual.geometry] = np.matmul(lfk[link], visual.origin)
@@ -3130,7 +3131,7 @@ class URDF(URDFType):
         """
         lfk = self.link_fk(cfg=cfg, links=links)
 
-        fk = {}
+        fk = OrderedDict()
         for link in lfk:
             for visual in link.visuals:
                 for mesh in visual.geometry.meshes:
@@ -3168,7 +3169,7 @@ class URDF(URDFType):
         """
         lfk = self.link_fk_batch(cfgs=cfgs, links=links)
 
-        fk = {}
+        fk = OrderedDict()
         for link in lfk:
             for visual in link.visuals:
                 for mesh in visual.geometry.meshes:
@@ -3206,7 +3207,7 @@ class URDF(URDFType):
         """
         lfk = self.link_fk(cfg=cfg, links=links)
 
-        fk = {}
+        fk = OrderedDict()
         for link in lfk:
             for collision in link.collisions:
                 fk[collision] = lfk[link].dot(collision.origin)
@@ -3236,7 +3237,7 @@ class URDF(URDFType):
         """
         lfk = self.link_fk_batch(cfgs=cfgs, links=links)
 
-        fk = {}
+        fk = OrderedDict()
         for link in lfk:
             for collision in link.collisions:
                 fk[collision] = np.matmul(lfk[link], collision.origin)
@@ -3268,7 +3269,7 @@ class URDF(URDFType):
         """
         lfk = self.link_fk(cfg=cfg, links=links)
 
-        fk = {}
+        fk = OrderedDict()
         for link in lfk:
             pose = lfk[link]
             cm = link.collision_mesh
@@ -3301,7 +3302,7 @@ class URDF(URDFType):
         """
         lfk = self.link_fk_batch(cfgs=cfgs, links=links)
 
-        fk = {}
+        fk = OrderedDict()
         for link in lfk:
             poses = lfk[link]
             cm = link.collision_mesh
