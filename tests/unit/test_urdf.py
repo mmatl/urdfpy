@@ -103,3 +103,9 @@ def test_urdfpy(tmpdir):
     assert x.name == 'copy'
     assert len(x.joints) == 2 * len(u.joints) + 1
     assert len(x.links) == 2 * len(u.links)
+
+    # Test scale
+    x = u.copy(scale=3)
+    assert isinstance(x, URDF)
+    x = x.copy(scale=[1,1,3])
+    assert isinstance(x, URDF)

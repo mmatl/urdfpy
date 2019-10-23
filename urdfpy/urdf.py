@@ -324,7 +324,7 @@ class Box(URDFType):
             self._meshes = [trimesh.creation.box(extents=self.size)]
         return self._meshes
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy with the prefix applied to all names.
 
         Parameters
@@ -337,10 +337,11 @@ class Box(URDFType):
         :class:`.Box`
             A deep copy.
         """
+        if scale is None:
+            scale = 1.0
         b = Box(
-            size=self.size.copy(),
+            size=self.size.copy() * scale,
         )
-        b._meshes = [m.copy() for m in self._meshes]
         return b
 
 class Cylinder(URDFType):
@@ -398,7 +399,7 @@ class Cylinder(URDFType):
             )]
         return self._mesh
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy with the prefix applied to all names.
 
         Parameters
@@ -411,11 +412,20 @@ class Cylinder(URDFType):
         :class:`.Cylinder`
             A deep copy.
         """
-        c = Cylinder(
-            radius=self.radius,
-            length=self.length,
-        )
-        c._meshes = [m.copy() for m in self._meshes]
+        if scale is None:
+            scale = 1.0
+        if isinstance(scale, (list, np.ndarray)):
+            if scale[0] != scale[1]:
+                raise ValueError('Cannot rescale cylinder geometry with asymmetry in x/y')
+            c = Cylinder(
+                radius=self.radius * scale[0],
+                length=self.length * scale[2],
+            )
+        else:
+            c = Cylinder(
+                radius=self.radius * scale,
+                length=self.length * scale,
+            )
         return c
 
 
@@ -456,7 +466,7 @@ class Sphere(URDFType):
             self._meshes = [trimesh.creation.icosphere(radius=self.radius)]
         return self._meshes
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy with the prefix applied to all names.
 
         Parameters
@@ -469,10 +479,15 @@ class Sphere(URDFType):
         :class:`.Sphere`
             A deep copy.
         """
+        if scale is None:
+            scale = 1.0
+        if isinstance(scale, (list, np.ndarray)):
+            if scale[0] != scale[1] or scale[0] != scale[2]:
+                raise ValueError('Spheres do not support non-uniform scaling!')
+            scale = scale[0]
         s = Sphere(
-            radius=self.radius,
+            radius=self.radius * scale,
         )
-        s._meshes = [m.copy() for m in self._meshes]
         return s
 
 class Mesh(URDFType):
@@ -584,7 +599,7 @@ class Mesh(URDFType):
         node = self._unparse(path)
         return node
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy with the prefix applied to all names.
 
         Parameters
@@ -597,10 +612,19 @@ class Mesh(URDFType):
         :class:`.Sphere`
             A deep copy.
         """
+        meshes = [m.copy() for m in self.meshes]
+        if scale is not None:
+            sm = np.eye(4)
+            if isinstance(scale, (list, np.ndarray)):
+                sm[:3,:3] = np.diag(scale)
+            else:
+                sm[:3,:3] = np.diag(np.repeat(scale, 3))
+            for i, m in enumerate(meshes):
+                meshes[i] = m.apply_transform(sm)
         m = Mesh(
             filename=self.filename,
             scale=(self.scale.copy() if self.scale is not None else None),
-            meshes=[m.copy() for m in self.meshes],
+            meshes=meshes
         )
         return m
 
@@ -709,7 +733,7 @@ class Geometry(URDFType):
         """
         return self.geometry.meshes
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy with the prefix applied to all names.
 
         Parameters
@@ -723,10 +747,10 @@ class Geometry(URDFType):
             A deep copy.
         """
         v = Geometry(
-            box=(self.box.copy(prefix=prefix) if self.box else None),
-            cylinder=(self.cylinder.copy(prefix=prefix) if self.cylinder else None),
-            sphere=(self.sphere.copy(prefix=prefix) if self.sphere else None),
-            mesh=(self.mesh.copy(prefix=prefix) if self.mesh else None),
+            box=(self.box.copy(prefix=prefix, scale=scale) if self.box else None),
+            cylinder=(self.cylinder.copy(prefix=prefix, scale=scale) if self.cylinder else None),
+            sphere=(self.sphere.copy(prefix=prefix, scale=scale) if self.sphere else None),
+            mesh=(self.mesh.copy(prefix=prefix, scale=scale) if self.mesh else None),
         )
         return v
 
@@ -799,7 +823,7 @@ class Texture(URDFType):
 
         return self._unparse(path)
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy with the prefix applied to all names.
 
         Parameters
@@ -914,7 +938,7 @@ class Material(URDFType):
             node.attrib['name'] = self.name
         return node
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy of the material with the prefix applied to all names.
 
         Parameters
@@ -1005,7 +1029,7 @@ class Collision(URDFType):
         node.append(unparse_origin(self.origin))
         return node
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy of the visual with the prefix applied to all names.
 
         Parameters
@@ -1018,10 +1042,15 @@ class Collision(URDFType):
         :class:`.Visual`
             A deep copy of the visual.
         """
+        origin=self.origin.copy()
+        if scale is not None:
+            if not isinstance(scale, (list, np.ndarray)):
+                scale = np.repeat(scale, 3)
+            origin[:3,3] *= scale
         return Collision(
             name='{}{}'.format(prefix, self.name),
-            origin=self.origin.copy(),
-            geometry=self.geometry.copy(prefix=prefix),
+            origin=origin,
+            geometry=self.geometry.copy(prefix=prefix, scale=scale),
         )
 
 
@@ -1113,7 +1142,7 @@ class Visual(URDFType):
         node.append(unparse_origin(self.origin))
         return node
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy of the visual with the prefix applied to all names.
 
         Parameters
@@ -1126,10 +1155,15 @@ class Visual(URDFType):
         :class:`.Visual`
             A deep copy of the visual.
         """
+        origin=self.origin.copy()
+        if scale is not None:
+            if not isinstance(scale, (list, np.ndarray)):
+                scale = np.repeat(scale, 3)
+            origin[:3,3] *= scale
         return Visual(
-            geometry=self.geometry.copy(prefix=prefix),
+            geometry=self.geometry.copy(prefix=prefix, scale=scale),
             name='{}{}'.format(prefix, self.name),
-            origin=self.origin,
+            origin=origin,
             material=(self.material.copy(prefix=prefix) if self.material else None),
         )
 
@@ -1221,7 +1255,7 @@ class Inertial(URDFType):
         node.append(inertia)
         return node
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', mass=None, origin=None, inertia=None):
         """Create a deep copy of the visual with the prefix applied to all names.
 
         Parameters
@@ -1234,10 +1268,16 @@ class Inertial(URDFType):
         :class:`.Inertial`
             A deep copy of the visual.
         """
+        if mass is None:
+            mass = self.mass
+        if origin is None:
+            origin = self.origin.copy()
+        if inertia is None:
+            inertia = self.inertia.copy()
         return Inertial(
-            mass=self.mass,
-            inertia=self.inertia.copy(),
-            origin=self.origin.copy(),
+            mass=mass,
+            inertia=inertia,
+            origin=origin,
         )
 
 ###############################################################################
@@ -1291,7 +1331,7 @@ class JointCalibration(URDFType):
             value = float(value)
         self._falling = value
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy of the visual with the prefix applied to all names.
 
         Parameters
@@ -1356,7 +1396,7 @@ class JointDynamics(URDFType):
             value = float(value)
         self._friction = value
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy of the visual with the prefix applied to all names.
 
         Parameters
@@ -1448,7 +1488,7 @@ class JointLimit(URDFType):
             value = float(value)
         self._upper = value
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy of the visual with the prefix applied to all names.
 
         Parameters
@@ -1534,7 +1574,7 @@ class JointMimic(URDFType):
             value = 0.0
         self._offset = value
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy of the joint mimic with the prefix applied to all names.
 
         Parameters
@@ -1639,7 +1679,7 @@ class SafetyController(URDFType):
     def k_velocity(self, value):
         self._k_velocity = float(value)
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy of the visual with the prefix applied to all names.
 
         Parameters
@@ -1752,7 +1792,7 @@ class Actuator(URDFType):
                 node.append(h)
         return node
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy of the visual with the prefix applied to all names.
 
         Parameters
@@ -1834,7 +1874,7 @@ class TransmissionJoint(URDFType):
                 node.append(h)
         return node
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy with the prefix applied to all names.
 
         Parameters
@@ -1959,7 +1999,7 @@ class Transmission(URDFType):
         node.append(ttype)
         return node
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy with the prefix applied to all names.
 
         Parameters
@@ -2392,7 +2432,7 @@ class Joint(URDFType):
         ), (len(angles), 1, 1)) * sina[:, np.newaxis, np.newaxis]
         return M
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy of the joint with the prefix applied to all names.
 
         Parameters
@@ -2405,19 +2445,24 @@ class Joint(URDFType):
         :class:`.Joint`
             A deep copy of the joint.
         """
+        origin = self.origin.copy()
+        if scale is not None:
+            if not isinstance(scale, (list, np.ndarray)):
+                scale = np.repeat(scale, 3)
+            origin[:3,3] *= scale
         cpy = Joint(
             name='{}{}'.format(prefix, self.name),
             joint_type=self.joint_type,
             parent='{}{}'.format(prefix, self.parent),
             child='{}{}'.format(prefix, self.child),
             axis=self.axis.copy(),
-            origin=self.origin.copy(),
-            limit=(self.limit.copy(prefix) if self.limit else None),
-            dynamics=(self.dynamics.copy(prefix) if self.dynamics else None),
-            safety_controller=(self.safety_controller.copy(prefix) if
+            origin=origin,
+            limit=(self.limit.copy(prefix, scale) if self.limit else None),
+            dynamics=(self.dynamics.copy(prefix,scale) if self.dynamics else None),
+            safety_controller=(self.safety_controller.copy(prefix, scale) if
                                self.safety_controller else None),
-            calibration=(self.calibration.copy(prefix) if self.calibration else None),
-            mimic=(self.mimic.copy(prefix=prefix) if self.mimic else None)
+            calibration=(self.calibration.copy(prefix, scale) if self.calibration else None),
+            mimic=(self.mimic.copy(prefix=prefix, scale=scale) if self.mimic else None)
         )
         return cpy
 
@@ -2536,7 +2581,7 @@ class Link(URDFType):
             self._collision_mesh = (meshes[0] + meshes[1:])
         return self._collision_mesh
 
-    def copy(self, prefix=''):
+    def copy(self, prefix='', scale=None):
         """Create a deep copy of the link.
 
         Parameters
@@ -2549,13 +2594,28 @@ class Link(URDFType):
         link : :class:`.Link`
             A deep copy of the Link.
         """
+        inertial = None
+        cm = self._collision_mesh
+        if scale is not None:
+            if self.collision_mesh is not None and self.inertial is not None:
+                sm = np.eye(4)
+                if not isinstance(scale, (list, np.ndarray)):
+                    scale = np.repeat(scale, 3)
+                sm[:3,:3] = np.diag(scale)
+                cm = self.collision_mesh.copy()
+                cm.density = self.inertial.mass / cm.volume
+                cm.apply_transform(sm)
+                cmm = np.eye(4)
+                cmm[:3,3] = cm.center_mass
+                inertial = Inertial(mass=cm.mass, inertia=cm.moment_inertia,
+                                    origin=cmm)
         cpy = Link(
             name='{}{}'.format(prefix, self.name),
-            inertial=(self.inertial.copy(prefix) if self.inertial else None),
-            visuals=[v.copy(prefix=prefix) for v in self.visuals],
-            collisions=[v.copy(prefix=prefix) for v in self.collisions],
+            inertial=inertial,
+            visuals=[v.copy(prefix=prefix, scale=scale) for v in self.visuals],
+            collisions=[v.copy(prefix=prefix, scale=scale) for v in self.collisions],
         )
-        cpy._collision_mesh = self._collision_mesh
+        cpy._collision_mesh = cm
         return cpy
 
 class URDF(URDFType):
@@ -3484,9 +3544,11 @@ class URDF(URDFType):
             pose = fk[tm]
             mesh = pyrender.Mesh.from_trimesh(tm, smooth=False)
             scene.add(mesh, pose=pose)
+        m = trimesh.creation.box(extents=[0.2, 0.2, 0.2])
+        scene.add(pyrender.Mesh.from_trimesh(m), pose=np.eye(4))
         pyrender.Viewer(scene, use_raymond_lighting=True)
 
-    def copy(self, name=None, prefix=''):
+    def copy(self, name=None, prefix='', scale=None):
         """Make a deep copy of the URDF.
 
         Parameters
@@ -3495,6 +3557,8 @@ class URDF(URDFType):
             A name for the new URDF. If not specified, ``self.name`` is used.
         prefix : str, optional
             A prefix to apply to all names except for the base URDF name.
+        scale : float or (3,) float, optional
+            A scale to apply to the URDF.
 
         Returns
         -------
@@ -3503,10 +3567,10 @@ class URDF(URDFType):
         """
         return URDF(
             name = (name if name else self.name),
-            links=[v.copy(prefix) for v in self.links],
-            joints=[v.copy(prefix) for v in self.joints],
-            transmissions=[v.copy(prefix) for v in self.transmissions],
-            materials=[v.copy(prefix) for v in self.materials],
+            links=[v.copy(prefix, scale) for v in self.links],
+            joints=[v.copy(prefix, scale) for v in self.joints],
+            transmissions=[v.copy(prefix, scale) for v in self.transmissions],
+            materials=[v.copy(prefix, scale) for v in self.materials],
             other_xml=self.other_xml
         )
 
