@@ -3544,8 +3544,6 @@ class URDF(URDFType):
             pose = fk[tm]
             mesh = pyrender.Mesh.from_trimesh(tm, smooth=False)
             scene.add(mesh, pose=pose)
-        m = trimesh.creation.box(extents=[0.2, 0.2, 0.2])
-        scene.add(pyrender.Mesh.from_trimesh(m), pose=np.eye(4))
         pyrender.Viewer(scene, use_raymond_lighting=True)
 
     def copy(self, name=None, prefix='', scale=None):
