@@ -2594,7 +2594,7 @@ class Link(URDFType):
         link : :class:`.Link`
             A deep copy of the Link.
         """
-        inertial = None
+        inertial = self.inertial.copy() if self.inertial is not None else None
         cm = self._collision_mesh
         if scale is not None:
             if self.collision_mesh is not None and self.inertial is not None:
