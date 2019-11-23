@@ -621,8 +621,10 @@ class Mesh(URDFType):
                 sm[:3,:3] = np.diag(np.repeat(scale, 3))
             for i, m in enumerate(meshes):
                 meshes[i] = m.apply_transform(sm)
+        base, fn = os.path.split(self.filename)
+        fn = '{}{}'.format(prefix, self.filename)
         m = Mesh(
-            filename=self.filename,
+            filename=os.path.join(base, fn),
             scale=(self.scale.copy() if self.scale is not None else None),
             meshes=meshes
         )
