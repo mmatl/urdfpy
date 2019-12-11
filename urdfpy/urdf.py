@@ -364,7 +364,7 @@ class Cylinder(URDFType):
     def __init__(self, radius, length):
         self.radius = radius
         self.length = length
-        self._meshes = None
+        self._meshes = []
 
     @property
     def radius(self):
@@ -375,7 +375,7 @@ class Cylinder(URDFType):
     @radius.setter
     def radius(self, value):
         self._radius = float(value)
-        self._meshes = None
+        self._meshes = []
 
     @property
     def length(self):
@@ -386,7 +386,7 @@ class Cylinder(URDFType):
     @length.setter
     def length(self, value):
         self._length = float(value)
-        self._meshes = None
+        self._meshes = []
 
     @property
     def meshes(self):
@@ -397,7 +397,7 @@ class Cylinder(URDFType):
             self._meshes = [trimesh.creation.cylinder(
                 radius=self.radius, height=self.length
             )]
-        return self._mesh
+        return self._meshes
 
     def copy(self, prefix='', scale=None):
         """Create a deep copy with the prefix applied to all names.
