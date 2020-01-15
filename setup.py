@@ -8,7 +8,7 @@ requirements = [
     'networkx==2.2',    # For joint graph
     'numpy',            # Numpy
     'pillow',           # For texture image loading
-    'pycollada',        # COLLADA (.dae) mesh loading via trimesh
+    'pycollada==0.6',   # COLLADA (.dae) mesh loading via trimesh
     'pyrender>=0.1.20', # For visualization
     'scipy',            # For trimesh, annoyingly
     'six',              # Python 2/3 compatability
