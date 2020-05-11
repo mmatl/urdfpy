@@ -556,7 +556,7 @@ class Mesh(URDFType):
     def meshes(self, value):
         if isinstance(value, six.string_types):
             value = load_meshes(value)
-        elif isinstance(value, (list, tuple, set)):
+        elif isinstance(value, (list, tuple, set, np.ndarray)):
             value = list(value)
             if len(value) == 0:
                 raise ValueError('Mesh must have at least one trimesh.Trimesh')
