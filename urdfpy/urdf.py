@@ -2047,6 +2047,7 @@ class Joint(URDFType):
       unlimited range of motion.
     - ``planar`` - a joint that moves in the plane orthogonal to the axis.
     - ``floating`` - a joint that can move in 6DoF.
+    - ``spherical`` - a spherical joint that moves in 3DoF.
 
     Parameters
     ----------
@@ -2079,7 +2080,7 @@ class Joint(URDFType):
         Joint mimicry information.
     """
     TYPES = ['fixed', 'prismatic', 'revolute',
-             'continuous', 'floating', 'planar']
+             'continuous', 'spherical', 'floating', 'planar']
     _ATTRIBS = {
         'name': (str, True),
     }
@@ -2289,6 +2290,7 @@ class Joint(URDFType):
             - ``planar`` - the x and y translation values in the plane.
             - ``floating`` - the xyz values followed by the rpy values,
               or a (4,4) matrix.
+            - ``spherical`` - same as ``floating``.
 
             If ``cfg`` is ``None``, then this just returns the joint pose.
 
@@ -2328,10 +2330,13 @@ class Joint(URDFType):
             translation = np.eye(4, dtype=np.float64)
             translation[:3,3] = self.origin[:3,:2].dot(cfg)
             return self.origin.dot(translation)
-        elif self.joint_type == 'floating':
+        elif self.joint_type in ['floating', 'spherical']:
             if cfg is None:
                 cfg = np.zeros(6, dtype=np.float64)
             else:
+                if self.joint_type == 'spherical':
+                    if cfg.shape == (4, 4):
+                        assert np.allclose(cfg[:3, 3], 0), "spherical joint should have no translation component"
                 cfg = configure_origin(cfg)
             if cfg is None:
                 raise ValueError('Invalid configuration for floating joint')
@@ -2354,6 +2359,7 @@ class Joint(URDFType):
             - ``revolute`` - a rotation about the axis in radians.
             - ``continuous`` - a rotation about the axis in radians.
             - ``planar`` - Not implemented.
+            - ``spherical`` - Not implemented.
             - ``floating`` - Not implemented.
 
             If ``cfg`` is ``None``, then this just returns the joint pose.
@@ -2379,7 +2385,7 @@ class Joint(URDFType):
             return np.matmul(self.origin, translation)
         elif self.joint_type == 'planar':
             raise NotImplementedError()
-        elif self.joint_type == 'floating':
+        elif self.joint_type in ['floating', 'spherical']:
             raise NotImplementedError()
         else:
             raise ValueError('Invalid configuration')
