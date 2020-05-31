@@ -596,6 +596,8 @@ class Mesh(URDFType):
         meshes = self.meshes
         if len(meshes) == 1:
             meshes = meshes[0]
+        else:
+            meshes = trimesh.scene.Scene(geometry=meshes)
         trimesh.exchange.export.export_mesh(meshes, fn)
 
         # Unparse the node
