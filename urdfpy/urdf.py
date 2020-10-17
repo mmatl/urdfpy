@@ -509,6 +509,8 @@ class Mesh(URDFType):
         The list of meshes is useful for visual geometries that
         might be composed of separate trimesh objects.
         If not specified, the mesh is loaded from the file using trimesh.
+    use_package : bool
+        The parsed XML node will use the `package://` prefix. For ROS compliance.
     """
     _ATTRIBS = {
         'filename': (str, True),
@@ -516,12 +518,13 @@ class Mesh(URDFType):
     }
     _TAG = 'mesh'
 
-    def __init__(self, filename, scale=None, meshes=None):
+    def __init__(self, filename, scale=None, meshes=None, use_package=False):
         if meshes is None:
             meshes = load_meshes(filename)
         self.filename = filename
         self.scale = scale
         self.meshes = meshes
+        self.use_package = use_package
 
     @property
     def filename(self):
@@ -592,16 +595,20 @@ class Mesh(URDFType):
         # Get the filename
         fn = get_filename(path, self.filename, makedirs=True)
 
+        # compatible formats for multi-mesh files (i.e. trimesh Scenes)
+        multimesh_compati_exts = ['.glb', '.obj']
         # Export the meshes as a single file
         meshes = self.meshes
         if len(meshes) == 1:
             meshes = meshes[0]
-        elif os.path.splitext(fn)[1] == '.glb':
+        elif os.path.splitext(fn)[1] in multimesh_compati_exts:
             meshes = trimesh.scene.Scene(geometry=meshes)
         trimesh.exchange.export.export_mesh(meshes, fn)
 
         # Unparse the node
         node = self._unparse(path)
+        if self.use_package:
+            node.attrib['filename'] = "package://" + self.filename
         return node
 
     def copy(self, prefix='', scale=None):
