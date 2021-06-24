@@ -2306,15 +2306,11 @@ class Joint(URDFType):
         elif self.joint_type in ['revolute', 'continuous']:
             if cfg is None:
                 cfg = 0.0
-            else:
-                cfg = float(cfg)
             R = trimesh.transformations.rotation_matrix(cfg, self.axis)
             return self.origin.dot(R)
         elif self.joint_type == 'prismatic':
             if cfg is None:
                 cfg = 0.0
-            else:
-                cfg = float(cfg)
             translation = np.eye(4, dtype=np.float64)
             translation[:3,3] = self.axis * cfg
             return self.origin.dot(translation)
