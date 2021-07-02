@@ -2534,7 +2534,7 @@ class Link(URDFType):
             raise TypeError('Expected Inertial object')
         # Set default inertial
         if value is None:
-            value = Inertial(mass=1.0, inertia=np.eye(3))
+            value = Inertial(mass=0.0, inertia=0.*np.eye(3))
         self._inertial = value
 
     @property
