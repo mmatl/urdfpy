@@ -2162,6 +2162,8 @@ class Joint(URDFType):
     def axis(self, value):
         if value is None:
             value = np.array([1.0, 0.0, 0.0], dtype=np.float64)
+        elif np.linalg.norm(value) < 1e-4:
+            value = np.array([1.0, 0.0, 0.0], dtype=np.float64)
         else:
             value = np.asanyarray(value, dtype=np.float64)
             if value.shape != (3,):
