@@ -100,7 +100,7 @@ class URDFType(object):
         return kwargs
 
     @classmethod
-    def _parse_simple_elements(cls, node, path):
+    def _parse_simple_elements(cls, node, path, lazy_load_meshes):
         """Parse all elements in the _ELEMENTS array from the children of
         this node.
 
@@ -111,6 +111,9 @@ class URDFType(object):
         path : str
             The string path where the XML file is located (used for resolving
             the location of mesh or image files).
+        lazy_load_meshes : bool
+            Whether a mesh element should be immediately loaded or loaded when
+            needed
 
         Returns
         -------
@@ -124,7 +127,10 @@ class URDFType(object):
             if not m:
                 v = node.find(t._TAG)
                 if r or v is not None:
-                    v = t._from_xml(v, path)
+                    if issubclass(t, URDFTypeWithMesh):
+                        v = t._from_xml(v, path, lazy_load_meshes)
+                    else:
+                        v = t._from_xml(v, path)
             else:
                 vs = node.findall(t._TAG)
                 if len(vs) == 0 and r:
@@ -134,12 +140,15 @@ class URDFType(object):
                             t.__name__, cls.__name__
                         )
                     )
-                v = [t._from_xml(n, path) for n in vs]
+                if issubclass(t, URDFTypeWithMesh):
+                    v = [t._from_xml(n, path, lazy_load_meshes) for n in vs]
+                else:
+                    v = [t._from_xml(n, path) for n in vs]
             kwargs[a] = v
         return kwargs
 
     @classmethod
-    def _parse(cls, node, path):
+    def _parse(cls, node, path, lazy_load_meshes=False):
         """Parse all elements and attributes in the _ELEMENTS and _ATTRIBS
         arrays for a node.
 
@@ -158,7 +167,7 @@ class URDFType(object):
             and elements in the class arrays.
         """
         kwargs = cls._parse_simple_attribs(node)
-        kwargs.update(cls._parse_simple_elements(node, path))
+        kwargs.update(cls._parse_simple_elements(node, path, lazy_load_meshes))
         return kwargs
 
     @classmethod
@@ -281,6 +290,52 @@ class URDFType(object):
         """
         return self._unparse(path)
 
+class URDFTypeWithMesh(URDFType):
+    @classmethod
+    def _parse(cls, node, path, lazy_load_meshes):
+        """Parse all elements and attributes in the _ELEMENTS and _ATTRIBS
+        arrays for a node.
+
+        Parameters
+        ----------
+        node : :class:`lxml.etree.Element`
+            The node to parse.
+        path : str
+            The string path where the XML file is located (used for resolving
+            the location of mesh or image files).
+        lazy_load_meshes : bool
+            Whether meshes should be loaded immediately or upon their first use
+
+        Returns
+        -------
+        kwargs : dict
+            Map from names to Python classes created from the attributes
+            and elements in the class arrays.
+        """
+        kwargs = cls._parse_simple_attribs(node)
+        kwargs.update(cls._parse_simple_elements(node, path, lazy_load_meshes))
+        return kwargs
+
+    @classmethod
+    def _from_xml(cls, node, path, lazy_load_meshes):
+        """Create an instance of this class from an XML node.
+
+        Parameters
+        ----------
+        node : :class:`lxml.etree.Element`
+            The node to parse.
+        path : str
+            The string path where the XML file is located (used for resolving
+            the location of mesh or image files).
+        lazy_load_meshes : bool
+            Whether meshes should be loaded immediately or upon their first use
+
+        Returns
+        -------
+        obj : :class:`URDFType`
+            An instance of this class parsed from the node.
+        """
+        return cls(**cls._parse(node, path, lazy_load_meshes))
 
 ###############################################################################
 # Link types
@@ -493,7 +548,7 @@ class Sphere(URDFType):
         return s
 
 
-class Mesh(URDFType):
+class Mesh(URDFTypeWithMesh):
     """A triangular mesh object.
 
     Parameters
@@ -516,11 +571,16 @@ class Mesh(URDFType):
     }
     _TAG = 'mesh'
 
-    def __init__(self, filename, scale=None, meshes=None):
+    def __init__(self, filename, combine, scale=None, meshes=None, lazy_filename=True):
         if meshes is None:
-            meshes = load_meshes(filename)
+            if lazy_filename is None:
+                meshes = load_meshes(filename)
+            else:
+                meshes = None
         self.filename = filename
         self.scale = scale
+        self.lazy_filename = lazy_filename
+        self.combine = combine
         self.meshes = meshes
 
     @property
@@ -550,11 +610,15 @@ class Mesh(URDFType):
         """list of :class:`~trimesh.base.Trimesh` : The triangular meshes
         that represent this object.
         """
+        if self.lazy_filename is not None and self._meshes is None:
+            self.meshes = self._load_and_combine_meshes(self.lazy_filename, self.combine)
         return self._meshes
 
     @meshes.setter
     def meshes(self, value):
-        if isinstance(value, six.string_types):
+        if self.lazy_filename is not None and value is None:
+            self._meshes = None
+        elif isinstance(value, six.string_types):
             value = load_meshes(value)
         elif isinstance(value, (list, tuple, set, np.ndarray)):
             value = list(value)
@@ -570,21 +634,32 @@ class Mesh(URDFType):
             raise TypeError('Mesh requires a trimesh.Trimesh')
         self._meshes = value
 
-    @classmethod
-    def _from_xml(cls, node, path):
-        kwargs = cls._parse(node, path)
-
-        # Load the mesh, combining collision geometry meshes but keeping
-        # visual ones separate to preserve colors and textures
-        fn = get_filename(path, kwargs['filename'])
-        combine = node.getparent().getparent().tag == Collision._TAG
+    @staticmethod
+    def _load_and_combine_meshes(fn, combine):
         meshes = load_meshes(fn)
         if combine:
             # Delete visuals for simplicity
             for m in meshes:
                 m.visual = trimesh.visual.ColorVisuals(mesh=m)
             meshes = [meshes[0] + meshes[1:]]
+        return meshes
+
+    @classmethod
+    def _from_xml(cls, node, path, lazy_load_meshes):
+        kwargs = cls._parse(node, path, lazy_load_meshes)
+
+        # Load the mesh, combining collision geometry meshes but keeping
+        # visual ones separate to preserve colors and textures
+        fn = get_filename(path, kwargs['filename'])
+        combine = node.getparent().getparent().tag == Collision._TAG
+        if not lazy_load_meshes:
+            meshes = cls._load_and_combine_meshes(fn, combine)
+            kwargs['lazy_filename'] = None
+        else:
+            meshes = None
+            kwargs['lazy_filename'] = fn
         kwargs['meshes'] = meshes
+        kwargs['combine'] = combine
 
         return Mesh(**kwargs)
 
@@ -631,12 +706,13 @@ class Mesh(URDFType):
         m = Mesh(
             filename=os.path.join(base, fn),
             scale=(self.scale.copy() if self.scale is not None else None),
-            meshes=meshes
+            meshes=meshes,
+            lazy=self.lazy,
         )
         return m
 
 
-class Geometry(URDFType):
+class Geometry(URDFTypeWithMesh):
     """A wrapper for all geometry types.
 
     Only one of the following values can be set, all others should be set
@@ -967,7 +1043,7 @@ class Material(URDFType):
         )
 
 
-class Collision(URDFType):
+class Collision(URDFTypeWithMesh):
     """Collision properties of a link.
 
     Parameters
@@ -1029,8 +1105,8 @@ class Collision(URDFType):
         self._origin = configure_origin(value)
 
     @classmethod
-    def _from_xml(cls, node, path):
-        kwargs = cls._parse(node, path)
+    def _from_xml(cls, node, path, lazy_load_meshes):
+        kwargs = cls._parse(node, path, lazy_load_meshes)
         kwargs['origin'] = parse_origin(node)
         return Collision(**kwargs)
 
@@ -1064,7 +1140,7 @@ class Collision(URDFType):
         )
 
 
-class Visual(URDFType):
+class Visual(URDFTypeWithMesh):
     """Visual properties of a link.
 
     Parameters
@@ -1142,8 +1218,8 @@ class Visual(URDFType):
         self._material = value
 
     @classmethod
-    def _from_xml(cls, node, path):
-        kwargs = cls._parse(node, path)
+    def _from_xml(cls, node, path, lazy_load_meshes):
+        kwargs = cls._parse(node, path, lazy_load_meshes)
         kwargs['origin'] = parse_origin(node)
         return Visual(**kwargs)
 
@@ -2344,7 +2420,7 @@ class Joint(URDFType):
             raise ValueError('Invalid configuration')
 
     def get_child_poses(self, cfg, n_cfgs):
-        """Computes the child pose relative to a parent pose for a given set of 
+        """Computes the child pose relative to a parent pose for a given set of
         configuration values.
 
         Parameters
@@ -2485,7 +2561,7 @@ class Joint(URDFType):
         return cpy
 
 
-class Link(URDFType):
+class Link(URDFTypeWithMesh):
     """A link of a rigid object.
 
     Parameters
@@ -3698,7 +3774,7 @@ class URDF(URDFType):
                     self._material_map[v.material.name] = v.material
 
     @staticmethod
-    def load(file_obj):
+    def load(file_obj, lazy_load_meshes=False):
         """Load a URDF from a file.
 
         Parameters
@@ -3708,6 +3784,10 @@ class URDF(URDFType):
             ``.urdf`` XML file. Any paths in the URDF should be specified
             as relative paths to the ``.urdf`` file instead of as ROS
             resources.
+        lazy_load_meshes : bool
+            If true, meshes will only loaded when requested by a function call.
+            This dramatically speeds up loading time for the URDF but may lead
+            to unexpected timing mid-program when the meshes have to be loaded
 
         Returns
         -------
@@ -3728,7 +3808,7 @@ class URDF(URDFType):
             path, _ = os.path.split(file_obj.name)
 
         node = tree.getroot()
-        return URDF._from_xml(node, path)
+        return URDF._from_xml(node, path, lazy_load_meshes)
 
     def _validate_joints(self):
         """Raise an exception of any joints are invalidly specified.
@@ -3923,9 +4003,9 @@ class URDF(URDFType):
         return joint_cfg, n_cfgs
 
     @classmethod
-    def _from_xml(cls, node, path):
+    def _from_xml(cls, node, path, lazy_load_meshes):
         valid_tags = set(['joint', 'link', 'transmission', 'material'])
-        kwargs = cls._parse(node, path)
+        kwargs = cls._parse(node, path, lazy_load_meshes)
 
         extra_xml_node = ET.Element('extra')
         for child in node:
