@@ -1,4 +1,4 @@
-from .urdf import (URDFType,
+from .urdf import (URDFType, URDFTypeWithMesh,
                    Box, Cylinder, Sphere, Mesh, Geometry,
                    Texture, Material,
                    Collision, Visual, Inertial,
@@ -10,7 +10,7 @@ from .utils import (rpy_to_matrix, matrix_to_rpy, xyz_rpy_to_matrix,
 from .version import __version__
 
 __all__ = [
-    'URDFType', 'Box', 'Cylinder', 'Sphere', 'Mesh', 'Geometry',
+    'URDFType', 'URDFTypeWithMesh', 'Box', 'Cylinder', 'Sphere', 'Mesh', 'Geometry',
     'Texture', 'Material', 'Collision', 'Visual', 'Inertial',
     'JointCalibration', 'JointDynamics', 'JointLimit', 'JointMimic',
     'SafetyController', 'Actuator', 'TransmissionJoint',

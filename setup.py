@@ -1,5 +1,5 @@
 """
-Author: Matthew Matl
+Author: Adam Fishman
 """
 from setuptools import setup
 
@@ -29,17 +29,15 @@ docs_requirements = [
     'sphinx-automodapi'  # For generating nice tables
 ]
 
-exec(open('urdfpy/version.py').read())
-
 setup(
-    name='urdfpy',
-    version=__version__,
+    name='urchin',
+    version='0.0.23',
     description='URDF parser and manipulator for Python',
-    long_description='URDF parser and manipulator for Python',
-    author='Matthew Matl',
-    author_email='matthewcmatl@gmail.com',
+    long_description='URDF parser and manipulator for Python. This package is a fork of urdfpy, which seems to be no longer maintained. ',
+    author='Adam Fishman',
+    author_email='hello@fishbotics.com',
     license='MIT License',
-    url='https://github.com/mmatl/urdfpy',
+    url='https://github.com/fishbotics/urchin',
     keywords='robotics ros urdf robots parser',
     classifiers=[
         'Development Status :: 4 - Beta',
@@ -51,7 +49,7 @@ setup(
         'Natural Language :: English',
         'Topic :: Scientific/Engineering'
     ],
-    packages=['urdfpy'],
+    packages=['urchin'],
     setup_requires = requirements,
     install_requires=requirements,
     extras_require={
