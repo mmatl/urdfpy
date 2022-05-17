@@ -100,7 +100,7 @@ class URDFType(object):
         return kwargs
 
     @classmethod
-    def _parse_simple_elements(cls, node, path, lazy_load_meshes):
+    def _parse_simple_elements(cls, node, path):
         """Parse all elements in the _ELEMENTS array from the children of
         this node.
 
@@ -127,10 +127,7 @@ class URDFType(object):
             if not m:
                 v = node.find(t._TAG)
                 if r or v is not None:
-                    if issubclass(t, URDFTypeWithMesh):
-                        v = t._from_xml(v, path, lazy_load_meshes)
-                    else:
-                        v = t._from_xml(v, path)
+                    v = t._from_xml(v, path)
             else:
                 vs = node.findall(t._TAG)
                 if len(vs) == 0 and r:
@@ -140,15 +137,12 @@ class URDFType(object):
                             t.__name__, cls.__name__
                         )
                     )
-                if issubclass(t, URDFTypeWithMesh):
-                    v = [t._from_xml(n, path, lazy_load_meshes) for n in vs]
-                else:
-                    v = [t._from_xml(n, path) for n in vs]
+                v = [t._from_xml(n, path) for n in vs]
             kwargs[a] = v
         return kwargs
 
     @classmethod
-    def _parse(cls, node, path, lazy_load_meshes=False):
+    def _parse(cls, node, path):
         """Parse all elements and attributes in the _ELEMENTS and _ATTRIBS
         arrays for a node.
 
@@ -167,7 +161,7 @@ class URDFType(object):
             and elements in the class arrays.
         """
         kwargs = cls._parse_simple_attribs(node)
-        kwargs.update(cls._parse_simple_elements(node, path, lazy_load_meshes))
+        kwargs.update(cls._parse_simple_elements(node, path))
         return kwargs
 
     @classmethod
@@ -291,6 +285,55 @@ class URDFType(object):
         return self._unparse(path)
 
 class URDFTypeWithMesh(URDFType):
+
+    @classmethod
+    def _parse_simple_elements(cls, node, path, lazy_load_meshes):
+        """Parse all elements in the _ELEMENTS array from the children of
+        this node.
+
+        Parameters
+        ----------
+        node : :class:`lxml.etree.Element`
+            The node to parse children for.
+        path : str
+            The string path where the XML file is located (used for resolving
+            the location of mesh or image files).
+        lazy_load_meshes : bool
+            Whether a mesh element should be immediately loaded or loaded when
+            needed
+
+        Returns
+        -------
+        kwargs : dict
+            Map from element names to the :class:`URDFType` subclass (or list,
+            if ``multiple`` was set) created for that element.
+        """
+        kwargs = {}
+        for a in cls._ELEMENTS:
+            t, r, m = cls._ELEMENTS[a]
+            if not m:
+                v = node.find(t._TAG)
+                if r or v is not None:
+                    if issubclass(t, URDFTypeWithMesh):
+                        v = t._from_xml(v, path, lazy_load_meshes)
+                    else:
+                        v = t._from_xml(v, path)
+            else:
+                vs = node.findall(t._TAG)
+                if len(vs) == 0 and r:
+                    raise ValueError(
+                        'Missing required subelement(s) of type {} when '
+                        'parsing an object of type {}'.format(
+                            t.__name__, cls.__name__
+                        )
+                    )
+                if issubclass(t, URDFTypeWithMesh):
+                    v = [t._from_xml(n, path, lazy_load_meshes) for n in vs]
+                else:
+                    v = [t._from_xml(n, path) for n in vs]
+            kwargs[a] = v
+        return kwargs
+
     @classmethod
     def _parse(cls, node, path, lazy_load_meshes):
         """Parse all elements and attributes in the _ELEMENTS and _ATTRIBS
@@ -2721,7 +2764,7 @@ class Link(URDFTypeWithMesh):
         return cpy
 
 
-class URDF(URDFType):
+class URDF(URDFTypeWithMesh):
     """The top-level URDF specification.
 
     The URDF encapsulates an articulated object, such as a robot or a gripper.
