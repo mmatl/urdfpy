@@ -13,7 +13,7 @@ Loading from a File
 You can load a URDF from any ``.urdf`` file, as long as you fix the links
 to be relative or absolute links rather than ROS resource URLs.
 
->>> from urdfpy import URDF
+>>> from urchin import URDF
 >>> robot = URDF.load('tests/data/ur5/ur5.urdf')
 
 Saving to a File
@@ -120,11 +120,11 @@ trimesh.base.Trimesh
 Visualization
 -------------
 
-Urdfpy also comes bundled with two simple visualization functions.
+Urchin also comes bundled with two simple visualization functions.
 
 You can visualize a robot in a static configuration:
 
->>> robot.show(cfg={ 
+>>> robot.show(cfg={
 ...     'shoulder_lift_joint': -2.0,
 ...     'elbow_joint': 2.0
 ... })

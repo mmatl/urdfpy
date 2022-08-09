@@ -3,19 +3,19 @@
 Development Guide
 =================
 
-Read this guide before doing development in ``urdfpy``.
+Read this guide before doing development in ``urchin``.
 
 Setting Up
 ----------
 
 To set up the tools you'll need for developing, you'll need to install
-``urdfpy`` in development mode. Start by installing the development
+``urchin`` in development mode. Start by installing the development
 dependencies:
 
 .. code-block:: bash
 
-   git clone https://github.com/mmatl/urdfpy.git
-   cd urdfpy
+   git clone https://github.com/fishbotics/urchin.git
+   cd urchin
    pip install -e .[dev,docs]
 
 Next, install the git pre-commit hooks with the following command:
@@ -62,7 +62,7 @@ Their website has tons of useful details, but here are the basics.
 .. _pytest: https://docs.pytest.org/en/latest/
 
 To run the testing suite, simply navigate to the top-level folder
-in ``urdfpy`` and run the following command:
+in ``urchin`` and run the following command:
 
 .. code-block:: bash
 
@@ -103,7 +103,7 @@ option set:
 
 .. code-block:: bash
 
-   pytest --cov=urdfpy tests
+   pytest --cov=urchin tests
 
 This will dump a code coverage file. To view it in a nice HTML document,
 run the following command:
@@ -117,7 +117,7 @@ The generated HTML homepage will be stored at ``htmlcov/index.html``.
 Building Documentation
 ----------------------
 
-To build ``urdfpy``'s documentation, go to the ``docs`` directory and run
+To build ``urchin``'s documentation, go to the ``docs`` directory and run
 ``make`` with the appropriate target.
 For example,
 
