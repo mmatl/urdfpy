@@ -2,7 +2,7 @@
 
 Urchin is a fork of the no-longer-updated `urdfpy`. The API is still mostly the
 same. The main difference currently is that you can load urdfs without the
-meshes by passing the flag `lazy_load=True` to the `URDF.load` function.
+meshes (which is ~100x faster) by passing the flag `lazy_load=True` to the `URDF.load` function.
 
 ## Installation
 You can install urchin directly from pip.
