@@ -612,7 +612,7 @@ class Mesh(URDFTypeWithMesh):
     _ATTRIBS = {"filename": (str, True), "scale": (np.ndarray, False)}
     _TAG = "mesh"
 
-    def __init__(self, filename, combine, scale=None, meshes=None, lazy_filename=True):
+    def __init__(self, filename, combine, scale=None, meshes=None, lazy_filename=None):
         if meshes is None:
             if lazy_filename is None:
                 meshes = load_meshes(filename)
@@ -747,9 +747,10 @@ class Mesh(URDFTypeWithMesh):
         fn = "{}{}".format(prefix, self.filename)
         m = Mesh(
             filename=os.path.join(base, fn),
+            combine=self.combine,
             scale=(self.scale.copy() if self.scale is not None else None),
             meshes=meshes,
-            lazy=self.lazy,
+            lazy_filename=self.lazy_filename,
         )
         return m
 
