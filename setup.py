@@ -9,7 +9,7 @@ requirements = [
     "numpy",  # Numpy
     "pillow",  # For texture image loading
     "pycollada==0.6",  # COLLADA (.dae) mesh loading via trimesh
-    "pyrender>=0.1.20",  # For visualization
+    "pyribbit>=0.1.46",  # For visualization
     "scipy",  # For trimesh, annoyingly
     "six",  # Python 2/3 compatability
     "trimesh",  # Mesh geometry loading/creation/saving
@@ -31,7 +31,7 @@ docs_requirements = [
 
 setup(
     name="urchin",
-    version="0.0.25",
+    version="0.0.26",
     description="URDF parser and manipulator for Python",
     long_description="URDF parser and manipulator for Python. This package is a fork of urdfpy, which seems to be no longer maintained. ",
     author="Adam Fishman",
