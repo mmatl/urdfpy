@@ -31,7 +31,7 @@ docs_requirements = [
 
 setup(
     name="urchin",
-    version="0.0.26",
+    version="0.0.27",
     description="URDF parser and manipulator for Python",
     long_description="URDF parser and manipulator for Python. This package is a fork of urdfpy, which seems to be no longer maintained. ",
     author="Adam Fishman",
