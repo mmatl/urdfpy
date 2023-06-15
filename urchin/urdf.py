@@ -710,12 +710,13 @@ class Mesh(URDFTypeWithMesh):
         fn = get_filename(path, self.filename, makedirs=True)
 
         # Export the meshes as a single file
-        meshes = self.meshes
-        if len(meshes) == 1:
-            meshes = meshes[0]
-        elif os.path.splitext(fn)[1] == ".glb":
-            meshes = trimesh.scene.Scene(geometry=meshes)
-        trimesh.exchange.export.export_mesh(meshes, fn)
+        if self._meshes is not None:
+            meshes = self.meshes
+            if len(meshes) == 1:
+                meshes = meshes[0]
+            elif os.path.splitext(fn)[1] == ".glb":
+                meshes = trimesh.scene.Scene(geometry=meshes)
+            trimesh.exchange.export.export_mesh(meshes, fn)
 
         # Unparse the node
         node = self._unparse(path)
