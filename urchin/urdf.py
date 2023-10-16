@@ -137,7 +137,7 @@ class URDFType(object):
             else:
                 vs = node.findall(t._TAG)
                 if len(vs) == 0 and r:
-                    raise ValueError(
+                    print(
                         "Missing required subelement(s) of type {} when "
                         "parsing an object of type {}".format(t.__name__, cls.__name__)
                     )
@@ -2079,7 +2079,10 @@ class Transmission(URDFType):
     @classmethod
     def _from_xml(cls, node, path):
         kwargs = cls._parse(node, path)
-        kwargs["trans_type"] = node.find("type").text
+        trans_type = node.attrib.get("type")
+        if trans_type is None:
+            trans_type = node.find("type").text
+        kwargs["trans_type"] = trans_type
         return Transmission(**kwargs)
 
     def _to_xml(self, parent, path):
