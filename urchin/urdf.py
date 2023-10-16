@@ -563,6 +563,9 @@ class Sphere(URDFType):
         that represent this object.
         """
         if len(self._meshes) == 0:
+            if self.radius == 0:
+                print("[urdfpy]: radius equal to 0 is not supported, use a small number.")
+                self.radius = 0.001
             self._meshes = [trimesh.creation.icosphere(radius=self.radius)]
         return self._meshes
 
