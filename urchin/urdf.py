@@ -2776,6 +2776,7 @@ class URDF(URDFTypeWithMesh):
 
         self.name = name
         self.other_xml = other_xml
+        self.mesh_need_to_mirror = []
 
         # No setters for these
         self._links = list(links)
@@ -3302,17 +3303,35 @@ class URDF(URDFTypeWithMesh):
             to the base link's frame.
         """
         lfk = self.link_fk(cfg=cfg, links=links)
-
+        self.mesh_name_list = []
         fk = OrderedDict()
         for link in lfk:
             for visual in link.visuals:
-                for mesh in visual.geometry.meshes:
+                for i, mesh in enumerate(visual.geometry.meshes):
                     pose = lfk[link].dot(visual.origin)
                     if visual.geometry.mesh is not None:
+                        self.mesh_name_list.append(visual.geometry.mesh.filename)
                         if visual.geometry.mesh.scale is not None:
+                            if np.sum(visual.geometry.mesh.scale != abs(visual.geometry.mesh.scale)) > 0:
+                                if visual.geometry.mesh.filename not in self.mesh_need_to_mirror:
+                                    print(f"[urdfpy]: {visual.geometry.mesh.filename} needs to mirror")
+                                    self.mesh_need_to_mirror.append(visual.geometry.mesh.filename)
+                                    mesh_vertices = np.copy(mesh.vertices)
+                                    mesh_faces = np.copy(mesh.faces)
+                                    mesh_faces_new = np.hstack([mesh_faces[:, 2].reshape(-1, 1),
+                                                                mesh_faces[:, 1].reshape(-1, 1),
+                                                                mesh_faces[:, 0].reshape(-1, 1)])
+                                    mesh = trimesh.Trimesh()
+                                    mirror_axis = np.where(visual.geometry.mesh.scale < 0)[0][0]
+                                    mesh_vertices[:, mirror_axis] = -mesh_vertices[:, mirror_axis]
+                                    mesh.vertices = mesh_vertices
+                                    mesh.faces = mesh_faces_new
+                                    visual.geometry.meshes[i] = mesh
                             S = np.eye(4, dtype=np.float64)
-                            S[:3, :3] = np.diag(visual.geometry.mesh.scale)
+                            S[:3, :3] = abs(np.diag(visual.geometry.mesh.scale))
                             pose = pose.dot(S)
+                    else:
+                        self.mesh_name_list.append("")
                     fk[mesh] = pose
         return fk
 
@@ -3527,7 +3546,7 @@ class URDF(URDFTypeWithMesh):
         .. image:: /_static/ur5_three_joints.gif
 
         """
-        import pyrender  # Save pyrender import for here for CI
+        import pyribbit  # Save pyribbit import for here for CI
 
         ct = cfg_trajectory
 
@@ -3552,6 +3571,7 @@ class URDF(URDFTypeWithMesh):
                         raise ValueError("Trajectories must be same length")
                     ct_np[k] = val
         elif isinstance(ct, (list, tuple, np.ndarray)):
+            traj_len = len(ct)
             ct = np.asanyarray(ct).astype(np.float64)
             if ct.ndim == 1:
                 ct = ct.reshape(-1, 1)
@@ -3597,10 +3617,10 @@ class URDF(URDFTypeWithMesh):
             fk = self.visual_trimesh_fk()
 
         node_map = {}
-        scene = pyrender.Scene()
+        scene = pyribbit.Scene()
         for tm in fk:
             pose = fk[tm]
-            mesh = pyrender.Mesh.from_trimesh(tm, smooth=False)
+            mesh = pyribbit.Mesh.from_trimesh(tm, smooth=False)
             node = scene.add(mesh, pose=pose)
             node_map[tm] = node
 
@@ -3608,7 +3628,7 @@ class URDF(URDFTypeWithMesh):
         blp = self.link_fk(links=[self.base_link])[self.base_link]
 
         # Pop the visualizer asynchronously
-        v = pyrender.Viewer(
+        v = pyribbit.Viewer(
             scene, run_in_thread=True, use_raymond_lighting=True, view_center=blp[:3, 3]
         )
 
