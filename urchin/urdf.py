@@ -564,7 +564,7 @@ class Sphere(URDFType):
         """
         if len(self._meshes) == 0:
             if self.radius == 0:
-                print("[urdfpy]: radius equal to 0 is not supported, use a small number.")
+                print("[urchin]: radius equal to 0 is not supported, use a small number.")
                 self.radius = 0.001
             self._meshes = [trimesh.creation.icosphere(radius=self.radius)]
         return self._meshes
@@ -3320,7 +3320,7 @@ class URDF(URDFTypeWithMesh):
                         if visual.geometry.mesh.scale is not None:
                             if np.sum(visual.geometry.mesh.scale != abs(visual.geometry.mesh.scale)) > 0:
                                 if visual.geometry.mesh.filename not in self.mesh_need_to_mirror:
-                                    print(f"[urdfpy]: {visual.geometry.mesh.filename} needs to mirror")
+                                    print(f"[urchin]: {visual.geometry.mesh.filename} needs to mirror")
                                     self.mesh_need_to_mirror.append(visual.geometry.mesh.filename)
                                     mesh_vertices = np.copy(mesh.vertices)
                                     mesh_faces = np.copy(mesh.faces)
