@@ -679,8 +679,8 @@ class Mesh(URDFTypeWithMesh):
             raise TypeError("Mesh requires a trimesh.Trimesh")
         self._meshes = value
 
-    @staticmethod
-    def _load_and_combine_meshes(fn, combine):
+    @classmethod
+    def _load_and_combine_meshes(cls, fn, combine):
         meshes = load_meshes(fn)
         if combine:
             # Delete visuals for simplicity
@@ -3838,8 +3838,8 @@ class URDF(URDFTypeWithMesh):
                     self._materials.append(v.material)
                     self._material_map[v.material.name] = v.material
 
-    @staticmethod
-    def load(file_obj, lazy_load_meshes=False):
+    @classmethod
+    def load(cls, file_obj, lazy_load_meshes=False):
         """Load a URDF from a file.
 
         Parameters
@@ -3872,7 +3872,7 @@ class URDF(URDFTypeWithMesh):
             path, _ = os.path.split(file_obj.name)
 
         node = tree.getroot()
-        return URDF._from_xml(node, path, lazy_load_meshes)
+        return cls._from_xml(node, path, lazy_load_meshes)
 
     def _validate_joints(self):
         """Raise an exception of any joints are invalidly specified.
