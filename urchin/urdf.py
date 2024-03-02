@@ -3695,19 +3695,19 @@ class URDF(URDFTypeWithMesh):
             If True, the collision geometry is visualized instead of
             the visual geometry.
         """
-        import pyrender  # Save pyrender import for here for CI
+        import pyribbit  # Save pyribbit import for here for CI
 
         if use_collision:
             fk = self.collision_trimesh_fk(cfg=cfg)
         else:
             fk = self.visual_trimesh_fk(cfg=cfg)
 
-        scene = pyrender.Scene()
+        scene = pyribbit.Scene()
         for tm in fk:
             pose = fk[tm]
-            mesh = pyrender.Mesh.from_trimesh(tm, smooth=False)
+            mesh = pyribbit.Mesh.from_trimesh(tm, smooth=False)
             scene.add(mesh, pose=pose)
-        pyrender.Viewer(scene, use_raymond_lighting=True)
+        pyribbit.Viewer(scene, use_raymond_lighting=True)
 
     def copy(self, name=None, prefix="", scale=None, collision_only=False):
         """Make a deep copy of the URDF.
