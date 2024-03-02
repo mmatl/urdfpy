@@ -1,21 +1,21 @@
-from collections import OrderedDict
 import copy
 import os
 import time
+from collections import OrderedDict
 
-from lxml import etree as ET
 import networkx as nx
 import numpy as np
 import PIL
-import trimesh
 import six
+import trimesh
+from lxml import etree as ET
 
 from .utils import (
-    parse_origin,
-    unparse_origin,
+    configure_origin,
     get_filename,
     load_meshes,
-    configure_origin,
+    parse_origin,
+    unparse_origin,
 )
 
 
@@ -138,8 +138,8 @@ class URDFType(object):
                 vs = node.findall(t._TAG)
                 if len(vs) == 0 and r:
                     print(
-                        "Missing required subelement(s) of type {} when "
-                        "parsing an object of type {}".format(t.__name__, cls.__name__)
+                        f"Missing required subelement(s) of type {t.__name__} when "
+                        f"parsing an object of type {cls.__name__}."
                     )
                 v = [t._from_xml(n, path) for n in vs]
             kwargs[a] = v
@@ -564,8 +564,8 @@ class Sphere(URDFType):
         """
         if len(self._meshes) == 0:
             if self.radius == 0:
-                print("[urchin]: radius equal to 0 is not supported, use a small number.")
-                self.radius = 0.001
+                print("[urchin]: radius equal to 0 is not supported, using 1e-5.")
+                self.radius = 1e-5
             self._meshes = [trimesh.creation.icosphere(radius=self.radius)]
         return self._meshes
 
@@ -3318,23 +3318,44 @@ class URDF(URDFTypeWithMesh):
                     if visual.geometry.mesh is not None:
                         self.mesh_name_list.append(visual.geometry.mesh.filename)
                         if visual.geometry.mesh.scale is not None:
-                            if np.sum(visual.geometry.mesh.scale != abs(visual.geometry.mesh.scale)) > 0:
-                                if visual.geometry.mesh.filename not in self.mesh_need_to_mirror:
-                                    print(f"[urchin]: {visual.geometry.mesh.filename} needs to mirror")
-                                    self.mesh_need_to_mirror.append(visual.geometry.mesh.filename)
+                            if (
+                                np.sum(
+                                    visual.geometry.mesh.scale
+                                    != abs(visual.geometry.mesh.scale)
+                                )
+                                > 0
+                            ):
+                                if (
+                                    visual.geometry.mesh.filename
+                                    not in self.mesh_need_to_mirror
+                                ):
+                                    print(
+                                        f"[urchin]: {visual.geometry.mesh.filename} needs to mirror"
+                                    )
+                                    self.mesh_need_to_mirror.append(
+                                        visual.geometry.mesh.filename
+                                    )
                                     mesh_vertices = np.copy(mesh.vertices)
                                     mesh_faces = np.copy(mesh.faces)
-                                    mesh_faces_new = np.hstack([mesh_faces[:, 2].reshape(-1, 1),
-                                                                mesh_faces[:, 1].reshape(-1, 1),
-                                                                mesh_faces[:, 0].reshape(-1, 1)])
+                                    mesh_faces_new = np.hstack(
+                                        [
+                                            mesh_faces[:, 2].reshape(-1, 1),
+                                            mesh_faces[:, 1].reshape(-1, 1),
+                                            mesh_faces[:, 0].reshape(-1, 1),
+                                        ]
+                                    )
                                     mesh = trimesh.Trimesh()
-                                    mirror_axis = np.where(visual.geometry.mesh.scale < 0)[0][0]
-                                    mesh_vertices[:, mirror_axis] = -mesh_vertices[:, mirror_axis]
+                                    mirror_axis = np.where(
+                                        visual.geometry.mesh.scale < 0
+                                    )[0][0]
+                                    mesh_vertices[:, mirror_axis] = -mesh_vertices[
+                                        :, mirror_axis
+                                    ]
                                     mesh.vertices = mesh_vertices
                                     mesh.faces = mesh_faces_new
                                     visual.geometry.meshes[i] = mesh
                             S = np.eye(4, dtype=np.float64)
-                            S[:3, :3] = abs(np.diag(visual.geometry.mesh.scale))
+                            S[:3, :3] = np.abs(np.diag(visual.geometry.mesh.scale))
                             pose = pose.dot(S)
                     else:
                         self.mesh_name_list.append("")
