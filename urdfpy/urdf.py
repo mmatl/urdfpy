@@ -3566,12 +3566,37 @@ class URDF(URDFType):
         else:
             fk = self.visual_trimesh_fk(cfg=cfg)
 
-        scene = pyrender.Scene()
-        for tm in fk:
-            pose = fk[tm]
-            mesh = pyrender.Mesh.from_trimesh(tm, smooth=False)
-            scene.add(mesh, pose=pose)
-        pyrender.Viewer(scene, use_raymond_lighting=True)
+        # Update the viewer if it already exists
+        if self.viewer is not None:
+            if not self.viewer.is_active:
+                raise ValueError("Viewer is not active")
+            self.viewer.render_lock.acquire()
+            for mesh in fk:
+                pose = fk[mesh]
+                self.nodes[mesh].matrix = pose
+            # self.viewer._renderer._update_scene(self.viewer._renderer._nodes_to_render(self.scene))
+            self.viewer.render_lock.release()
+        else:
+            # Add new meshes to the scene
+            for tm in fk:
+                pose = fk[tm]
+                mesh = pyrender.Mesh.from_trimesh(tm, smooth=False)
+                node = self.scene.add(mesh, pose=pose)
+                self.nodes[tm] = node
+            # Create a new viewer if it doesn't exist
+            self.viewer = pyrender.Viewer(
+                self.scene,
+                use_raymond_lighting=True,
+                run_in_thread=True,
+                viewer_flags={"rotate": False},
+            )
+
+        # scene = pyrender.Scene()
+        # for tm in fk:
+        #     pose = fk[tm]
+        #     mesh = pyrender.Mesh.from_trimesh(tm, smooth=False)
+        #     scene.add(mesh, pose=pose)
+        # pyrender.Viewer(scene, use_raymond_lighting=True)
 
     def copy(self, name=None, prefix='', scale=None, collision_only=False):
         """Make a deep copy of the URDF.
