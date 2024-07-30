@@ -3472,6 +3472,7 @@ class URDF(URDFType):
                 ct = ct.reshape(-1, 1)
             if ct.ndim != 2 or ct.shape[1] != len(self.actuated_joints):
                 raise ValueError('Cfg trajectory must have entry for each joint')
+            traj_len=ct.shape[0]
             ct_np = {j: ct[:,i] for i, j in enumerate(self.actuated_joints)}
         else:
             raise TypeError('Invalid type for cfg_trajectory: {}'
